@@ -27,6 +27,7 @@ font_xs = pygame.font.SysFont("consolas", 14)
 MAGENTA = (255, 0, 255)
 NUM_CRATE_TYPES = 5
 BOMB_TYPE = 8
+POWERUP_HELMET_TYPE = 5
 GRAVITY_MS = 300
 INITIAL_SPAWN_MS = 3000
 GRAVITY_EVENT = pygame.USEREVENT + 1
@@ -54,10 +55,11 @@ bg_img = pygame.transform.scale(load_img("extracted/back.png"), (WIDTH, HEIGHT))
 title_img = pygame.transform.scale(load_img("extracted/title.png"), (WIDTH, HEIGHT + HUD_H))
 
 crate_sprites = slice_sheet(load_img("extracted/crates.png"), 8, 8, TILE_SIZE / 8)
-_bomb_img = pygame.image.load(os.path.join(ASSETS, "extracted/bomb_new.png")).convert_alpha()
+_bomb_img = pygame.image.load(os.path.join(ASSETS, "extracted/square_bomb.png")).convert_alpha()
 bomb_sprite = pygame.transform.scale(_bomb_img, (TILE_SIZE, TILE_SIZE))
 
 explosion_anim_cells = []
+floating_explosions = []
 explosion_anim_timer = 0
 
 # Crane sprites: full 16x18 frames (mechanism + crate built-in), scaled uniformly
@@ -101,7 +103,7 @@ PUSH_LEFT_FRAMES = [15, 16, 17]
 JUMP_RIGHT_FRAME = 18
 JUMP_LEFT_FRAME = 19
 STUN_FRAME = 20
-PUSH_SLIDE_SPEED = TILE_SIZE / 8
+PUSH_SLIDE_SPEED = 2.5
 JUMP_BUFFER_FRAMES = 8
 COYOTE_FRAMES = 6
 PUSH_HORIZONTAL_SPEED = 2.5
@@ -183,6 +185,7 @@ class Personagem:
         self.coyote_timer = 0
         self.push_cooldown = 0
         self.bomb_cooldown = 0
+        self.helmet_timer = 0
         self.sprites = char_sprites[char_id]
         self.num_frames = len(self.sprites)
 
@@ -261,17 +264,30 @@ class Personagem:
         dst_x = box_x + self.dir
         if not (0 <= dst_x < COLS):
             return False
+            
         # Can't push if destination is occupied
         if board_ref[box_y][dst_x] != 0:
             return False
+            
         # Can't push if there's a crate on top of this one
         if box_y > 0 and board_ref[box_y - 1][box_x] != 0:
             return False
+            
+        # Prevent pushing if there is a falling box currently crossing that tile
+        for b in falling_boxes:
+            if b["x"] == dst_x:
+                ty0 = int(b["py"] // TILE_SIZE)
+                ty1 = int((b["py"] + TILE_SIZE - 1) // TILE_SIZE)
+                if ty0 <= box_y <= ty1:
+                    return False
         return True
 
     def atualizar(self, teclas, board_ref):
         if not self.alive:
             return
+
+        if self.helmet_timer > 0:
+            self.helmet_timer -= 1
 
         if self.stun_timer > 0:
             self.stun_timer -= 1
@@ -290,49 +306,69 @@ class Personagem:
         if self.super_jump_buffer > 0:
             self.super_jump_buffer -= 1
 
-        if teclas.get("esquerda"):
-            self.vel_x = -self.velocidade
-            self.dir = -1
-        elif teclas.get("direita"):
-            self.vel_x = self.velocidade
-            self.dir = 1
+        if self.push_cooldown > 0:
+            if self.dir == -1 and teclas.get("esquerda"):
+                self.vel_x = -PUSH_HORIZONTAL_SPEED
+            elif self.dir == 1 and teclas.get("direita"):
+                self.vel_x = PUSH_HORIZONTAL_SPEED
+            else:
+                self.vel_x = 0
         else:
-            self.vel_x = 0
-            if self.no_chao:
-                self.estado = "parado"
+            if teclas.get("esquerda"):
+                self.vel_x = -self.velocidade
+                self.dir = -1
+            elif teclas.get("direita"):
+                self.vel_x = self.velocidade
+                self.dir = 1
+            else:
+                self.vel_x = 0
+                if self.no_chao:
+                    self.estado = "parado"
 
-        prox = self._proximo_caixa(board_ref) if self.vel_x != 0 and self.no_chao else None
-        wants_to_push = prox is not None
-        can_push_now = wants_to_push and self.push_cooldown <= 0
+        if self.push_cooldown > 0:
+            if self.vel_x != 0:
+                self.vel_x = PUSH_HORIZONTAL_SPEED * self.dir
+                self.estado = "empurrando"
+            self.push_cooldown -= 1
+        else:
+            prox = self._proximo_caixa(board_ref) if self.vel_x != 0 else None
+            wants_to_push = prox is not None
 
-        if wants_to_push:
-            self.estado = "empurrando"
-            self.vel_x = 0
-            if can_push_now:
+            if wants_to_push:
                 ptype = prox[0]
+                pushed = False
                 if ptype == "board":
                     bx, by = prox[1], prox[2]
                     nnx = bx + self.dir
                     if self._pode_empurrar_para(board_ref, bx, by):
                         self._empurrar_caixa(board_ref, bx, by, nnx)
-                        self.push_cooldown = 12
+                        self.push_cooldown = 16
+                        pushed = True
                 elif ptype == "falling":
                     box = prox[1]
                     bx = box["x"]
                     nnx = bx + self.dir
-                    # Check if destination is empty in board_ref and within bounds
-                    if 0 <= nnx < COLS and board_ref[box["y"]][nnx] == 0:
-                        # Ensure no other falling box is there
-                        if not any(b["x"] == nnx and abs(b["py"] - box["py"]) < TILE_SIZE for b in falling_boxes):
+                    if 0 <= nnx < COLS:
+                        ty0 = int(box["py"] // TILE_SIZE)
+                        ty1 = min(ROWS - 1, int((box["py"] + TILE_SIZE - 1) // TILE_SIZE))
+                        can_push_f = True
+                        for ty in range(ty0, ty1 + 1):
+                            if board_ref[ty][nnx] != 0: can_push_f = False
+                        
+                        if can_push_f and not any(b["x"] == nnx and abs(b["py"] - box["py"]) < TILE_SIZE for b in falling_boxes):
                             box["x"] = nnx
-                            self.push_cooldown = 12
-        elif self.vel_x != 0 and self.no_chao:
-            self.estado = "andando"
-        elif self.vel_x == 0 and self.no_chao:
-            self.estado = "parado"
-
-        if self.push_cooldown > 0:
-            self.push_cooldown -= 1
+                            self.push_cooldown = 16
+                            pushed = True
+                
+                if pushed:
+                    self.vel_x = PUSH_HORIZONTAL_SPEED * self.dir
+                    self.estado = "empurrando"
+                else:
+                    self.vel_x = 0
+            elif self.vel_x != 0 and self.no_chao:
+                self.estado = "andando"
+            elif self.vel_x == 0 and self.no_chao:
+                self.estado = "parado"
 
         can_jump_from_ground = self.no_chao or self.coyote_timer > 0
 
@@ -377,6 +413,7 @@ class Personagem:
         self._atualizar_anim()
 
     def _resolver_horizontal(self, board_ref):
+        global score
         r = self.rect
         y0 = max(0, r.top // TILE_SIZE)
         y1 = min(ROWS - 1, (r.bottom - 1) // TILE_SIZE)
@@ -388,10 +425,23 @@ class Personagem:
                     tile_r = pygame.Rect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE)
                     if not r.colliderect(tile_r):
                         continue
+                    if board_ref[ty][tx] == POWERUP_HELMET_TYPE:
+                        self.helmet_timer = 600
+                        board_ref[ty][tx] = 0
+                        score += 50
+                        continue
+                        
                     if self.vel_x > 0:
                         self.x = float(tile_r.left - self.PW)
                     elif self.vel_x < 0:
                         self.x = float(tile_r.right)
+                    else:
+                        d_left = r.right - tile_r.left
+                        d_right = tile_r.right - r.left
+                        if d_left < d_right:
+                            self.x = float(tile_r.left - self.PW)
+                        else:
+                            self.x = float(tile_r.right)
                     self.vel_x = 0
                     return
         
@@ -410,10 +460,18 @@ class Personagem:
                     self.x = float(tile_r.left - self.PW)
                 elif self.vel_x < 0:
                     self.x = float(tile_r.right)
+                else:
+                    d_left = r.right - tile_r.left
+                    d_right = tile_r.right - r.left
+                    if d_left < d_right:
+                        self.x = float(tile_r.left - self.PW)
+                    else:
+                        self.x = float(tile_r.right)
                 self.vel_x = 0
                 return
 
     def _resolver_vertical(self, board_ref):
+        global score
         self.no_chao = False
         r = self.rect
         y0 = max(0, r.top // TILE_SIZE)
@@ -427,6 +485,12 @@ class Personagem:
                 tile_r = pygame.Rect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE)
                 if not r.colliderect(tile_r):
                     continue
+                if board_ref[ty][tx] == POWERUP_HELMET_TYPE:
+                    self.helmet_timer = 600
+                    board_ref[ty][tx] = 0
+                    score += 50
+                    continue
+                    
                 if self.vel_y > 0:
                     self.y = float(tile_r.top - self.PH)
                     self.vel_y = 0
@@ -532,17 +596,34 @@ class Personagem:
             # it shouldn't crush.
             if crate_bottom < body_top or box_py > body_top + 16:
                 continue
+                
+            if box["type"] == POWERUP_HELMET_TYPE:
+                self.helmet_timer = 600
+                score += 50
+                falling_boxes_list.remove(box)
+                continue
 
-            # Collision detected — check for stomp
+            # Collision detected — check for break
             stomp_hit = (
                 self.vel_y >= 0 and
                 (self.y + self.PH) <= box_py + 16 and
                 (self.y + self.PH / 2) < (box_py + TILE_SIZE / 2)
             )
+            headbutt_hit = (
+                self.vel_y < 0 and
+                self.y <= crate_bottom and
+                self.helmet_timer > 0
+            )
+            
             if stomp_hit:
                 falling_boxes_list.remove(box)
                 score += 10
                 self.vel_y = min(self.vel_y, -4)
+            elif headbutt_hit:
+                falling_boxes_list.remove(box)
+                score += 10
+                self.vel_y = max(self.vel_y, 2)
+                floating_explosions.append({"px": box_px, "py": box_py, "timer": 20})
             else:
                 self.alive = False
                 stop_timers()
@@ -573,7 +654,7 @@ game_state = "title"
 selected_char = 0
 crane_x = 0.0
 crane_vx = 0.0
-crane_crates = {}       # {crane_index: {"x": grid_x, "type": crate_type}}
+cranes = []
 crane_frame = 0
 difficulty = 1.0
 spawn_interval = INITIAL_SPAWN_MS
@@ -583,9 +664,9 @@ match_anim_cells = []
 match_anim_timer = 0
 
 
-def reset_game():
+def reset_game(start_diff=1.0):
     global board, player, falling_boxes, push_animations, score, game_state
-    global crane_x, crane_crates, crane_frame, crane_vx, difficulty, spawn_interval
+    global cranes, crane_frame, difficulty, spawn_interval
     global line_clear_flash, combo_count, match_anim_cells, match_anim_timer
     char_id = CHAR_DEFS[selected_char]["id"]
     board = [[0 for _ in range(COLS)] for _ in range(ROWS)]
@@ -594,12 +675,10 @@ def reset_game():
     push_animations = []
     score = 0
     game_state = "play"
-    crane_x = 0.0
-    crane_crates = {}
+    cranes = []
     crane_frame = 0
-    crane_vx = CRANE_SPEED
-    difficulty = 1.0
-    spawn_interval = INITIAL_SPAWN_MS
+    difficulty = float(start_diff)
+    spawn_interval = max(800, int(INITIAL_SPAWN_MS / difficulty))
     line_clear_flash = 0
     combo_count = 0
     match_anim_cells = []
@@ -673,7 +752,7 @@ def do_post_landing():
                 
     if cleared > 0:
         score += 100 * cleared
-        difficulty = 1.0 + score / 800
+        difficulty = 1.0 + score / 100.0
         spawn_interval = max(800, int(INITIAL_SPAWN_MS / difficulty))
         pygame.time.set_timer(SPAWN_EVENT, spawn_interval)
         line_clear_flash = 15
@@ -773,65 +852,58 @@ def current_crane_count():
 
 
 def queue_crate_spawn(grid_x, crate_type):
-    """Assign a crate to a free crane. Each crane carries independently."""
     active_count = current_crane_count()
-    free = [i for i in range(active_count) if i not in crane_crates]
-    if not free:
-        return  # all cranes busy
-    crane_idx = random.choice(free)
-    crane_crates[crane_idx] = {"x": grid_x, "type": crate_type}
+    if len(cranes) >= active_count:
+        return
+    
+    if random.choice([True, False]):
+        x = -CRANE_SPRITE_W
+        vx = CRANE_SPEED
+    else:
+        x = WIDTH + CRANE_SPRITE_W
+        vx = -CRANE_SPEED
+        
+    cranes.append({
+        "x": float(x),
+        "vx": float(vx),
+        "drop_x": grid_x,
+        "type": crate_type,
+        "dropped": False
+    })
 
 
 def update_crane():
-    global crane_x, crane_vx, crane_frame, crane_crates
-    slot_w = CRANE_SPRITE_W  # each crane slot is one sprite wide
-    active_count = current_crane_count()
-    convoy_width = slot_w + CRANE_SPACING * (active_count - 1)
-    # Ensure hook center can reach from column 0 to column COLS-1
-    min_x = float(-slot_w / 2)
-    max_x = float(WIDTH - slot_w / 2)
-
-    if crane_vx == 0:
-        crane_vx = CRANE_SPEED
-
-    prev_x = crane_x
-    next_x = crane_x + crane_vx
-    if next_x > max_x:
-        crane_x = max_x
-        crane_vx = -CRANE_SPEED
-    elif next_x < min_x:
-        crane_x = min_x
-        crane_vx = CRANE_SPEED
-    else:
-        crane_x = next_x
-
+    global crane_frame
     crane_frame = 0
-
-    # Check each crane independently for dropping its crate
-    dropped_indices = []
-    for idx, crate_info in list(crane_crates.items()):
-        if idx >= active_count:
-            continue
-        target_px = crate_info["x"] * TILE_SIZE + TILE_SIZE / 2
-        prev_hook = prev_x + idx * CRANE_SPACING + slot_w / 2
-        curr_hook = crane_x + idx * CRANE_SPACING + slot_w / 2
-        crossed = (
-            (crane_vx > 0 and prev_hook <= target_px <= curr_hook) or
-            (crane_vx < 0 and prev_hook >= target_px >= curr_hook)
-        )
-        if crossed:
-            # Start the crate at the crane's bottom position so it falls from there
-            drop_row = max(0, CRANE_SPRITE_H // TILE_SIZE)
-            falling_boxes.append({
-                "x": crate_info["x"],
-                "y": drop_row,
-                "type": crate_info["type"],
-                "px": float(crate_info["x"] * TILE_SIZE),
-                "py": float(CRANE_SPRITE_H),
-            })
-            dropped_indices.append(idx)
-    for idx in dropped_indices:
-        del crane_crates[idx]
+    for c in cranes[:]:
+        prev_x = c["x"]
+        c["x"] += c["vx"]
+        
+        if not c["dropped"]:
+            target_px = c["drop_x"] * TILE_SIZE + TILE_SIZE / 2
+            curr_hook = c["x"] + CRANE_SPRITE_W / 2
+            prev_hook = prev_x + CRANE_SPRITE_W / 2
+            
+            crossed = (
+                (c["vx"] > 0 and prev_hook <= target_px <= curr_hook) or
+                (c["vx"] < 0 and prev_hook >= target_px >= curr_hook)
+            )
+            
+            if crossed:
+                drop_row = max(0, CRANE_SPRITE_H // TILE_SIZE)
+                falling_boxes.append({
+                    "x": c["drop_x"],
+                    "y": drop_row,
+                    "type": c["type"],
+                    "px": float(c["drop_x"] * TILE_SIZE),
+                    "py": float(CRANE_SPRITE_H),
+                })
+                c["dropped"] = True
+                
+        if c["vx"] > 0 and c["x"] > WIDTH + CRANE_SPRITE_W:
+            cranes.remove(c)
+        elif c["vx"] < 0 and c["x"] < -CRANE_SPRITE_W * 2:
+            cranes.remove(c)
 
 
 def update_box_visuals():
@@ -898,12 +970,15 @@ def draw_hud():
     if combo_count > 1:
         combo_txt = font_sm.render(f"Combo x{combo_count}!", True, (255, 150, 50))
         screen.blit(combo_txt, (WIDTH // 2 - combo_txt.get_width() // 2, HEIGHT + 32))
+        
+    if player and player.helmet_timer > 0:
+        p_txt = font_sm.render(f"Poder(Cabecada): {player.helmet_timer // 60}s", True, (100, 255, 100))
+        screen.blit(p_txt, (10, HEIGHT + 32))
 
 
 def draw_crane():
     if not crane_sprites:
         return
-    active_count = current_crane_count()
     crane_w = CRANE_SPRITE_W
 
     # Draw horizontal rail across top of screen
@@ -911,13 +986,12 @@ def draw_crane():
     pygame.draw.rect(screen, (100, 70, 50), (0, rail_y, WIDTH, 5))
     pygame.draw.rect(screen, (160, 120, 80), (0, rail_y + 1, WIDTH, 3))
 
-    for idx in range(active_count):
-        cx = crane_x + idx * CRANE_SPACING
+    for c in cranes:
+        cx = c["x"]
         if cx + crane_w < 0 or cx > WIDTH:
             continue
-        # Select correct sprite frame based on crate type
-        if idx in crane_crates:
-            crate_type = crane_crates[idx]["type"]
+        if not c["dropped"]:
+            crate_type = c["type"]
             frame_idx = CRANE_FRAME_FOR_CRATE.get(crate_type, 0)
         else:
             frame_idx = CRANE_EMPTY_FRAME
@@ -942,12 +1016,18 @@ def draw_game():
                 screen.blit(crate_sprite_for_type(board[y][x]), (x * TILE_SIZE, y * TILE_SIZE))
 
     if explosion_anim_timer > 0:
-        # Frames from crate_sprites: indices 10, 11, 12, 13
-        frame_idx = 3 - (explosion_anim_timer - 1) // 5
-        frame_idx = max(0, min(3, frame_idx))
-        exp_spr = pygame.transform.scale(crate_sprites[10 + frame_idx], (TILE_SIZE, TILE_SIZE))
+        exp_frame = 10 + (4 - ((explosion_anim_timer - 1) // 5) - 1)
+        exp_frame = max(10, min(13, exp_frame))
         for mx, my in explosion_anim_cells:
-            screen.blit(exp_spr, (mx * TILE_SIZE, my * TILE_SIZE))
+            screen.blit(crate_sprites[exp_frame], (mx * TILE_SIZE, my * TILE_SIZE))
+
+    for exp in floating_explosions[:]:
+        exp_frame = 10 + (4 - ((exp["timer"] - 1) // 5) - 1)
+        exp_frame = max(10, min(13, exp_frame))
+        screen.blit(crate_sprites[exp_frame], (int(exp["px"]), int(exp["py"])))
+        exp["timer"] -= 1
+        if exp["timer"] <= 0:
+            floating_explosions.remove(exp)
 
     for box in falling_boxes:
         bpx = box.get("px", box["x"] * TILE_SIZE)
@@ -994,90 +1074,130 @@ def draw_title():
 def draw_char_select():
     total_h = HEIGHT + HUD_H
 
-    # Gradient background
+    # Sleek industrial scanline background
     for y_line in range(total_h):
         t = y_line / total_h
-        r = int(15 + 20 * t)
-        g = int(18 + 15 * t)
-        b = int(35 + 25 * t)
+        r = int(25 + 10 * t)
+        g = int(30 + 15 * t)
+        b = int(45 + 20 * t)
+        if (y_line // 3) % 2 == 0:
+            r = max(0, r - 5); g = max(0, g - 5); b = max(0, b - 5)
         pygame.draw.line(screen, (r, g, b), (0, y_line), (WIDTH, y_line))
 
-    # Title with shadow
-    title_text = "Escolha Personagem"
+    # Top Navigation Bar
+    pygame.draw.rect(screen, (15, 20, 30), (0, 0, WIDTH, 50))
+    pygame.draw.line(screen, (255, 200, 50), (0, 50), (WIDTH, 50), 3)
+    
+    title_text = "Selecione o Personagem"
     t_shadow = font_big.render(title_text, True, (0, 0, 0))
-    t_main = font_big.render(title_text, True, (255, 220, 100))
+    t_main = font_big.render(title_text, True, (255, 255, 255))
     screen.blit(t_shadow, (WIDTH // 2 - t_main.get_width() // 2 + 2, 12))
     screen.blit(t_main, (WIDTH // 2 - t_main.get_width() // 2, 10))
 
-    # Decorative line under title
-    line_y = 48
-    pygame.draw.line(screen, (80, 70, 50), (30, line_y), (WIDTH - 30, line_y), 1)
-    pygame.draw.line(screen, (255, 220, 100), (WIDTH // 2 - 60, line_y), (WIDTH // 2 + 60, line_y), 2)
-
     cols_per_row = 3
     rows_count = 2
-    margin_x = 12
-    margin_y = 10
-    top_y = 58
+    margin_x = 15
+    margin_y = 15
+    top_y = 65
     footer_h = 30
-    cell_w = (WIDTH - margin_x * 2 - 8 * (cols_per_row - 1)) // cols_per_row
+    cell_w = (WIDTH - margin_x * 2 - 10 * (cols_per_row - 1)) // cols_per_row
     cell_h = (total_h - top_y - footer_h - margin_y * (rows_count - 1)) // rows_count
+
+    pulse = abs((pygame.time.get_ticks() % 1000) / 500 - 1)
 
     for i, cdef in enumerate(CHAR_DEFS):
         row = i // cols_per_row
         col = i % cols_per_row
-        rx = margin_x + col * (cell_w + 8)
+        rx = margin_x + col * (cell_w + 10)
         ry = top_y + row * (cell_h + margin_y)
         cx = rx + cell_w // 2
 
         is_sel = (i == selected_char)
 
+        # Selected card floats up slightly
+        if is_sel:
+            ry -= int(4 * pulse)
+
         rect = pygame.Rect(rx, ry, cell_w, cell_h)
 
-        # Selected glow effect
+        # Card shadow
+        shadow_rect = rect.copy()
+        shadow_rect.y += 6
+        pygame.draw.rect(screen, (10, 10, 15, 180), shadow_rect, border_radius=10)
+
+        # Card background (metallic gradient feel)
+        fill_col = (60, 68, 85) if is_sel else (35, 40, 55)
+        border_col = (255, 210, 50) if is_sel else (20, 25, 35)
+        border_width = 4 if is_sel else 2
+        pygame.draw.rect(screen, fill_col, rect, border_radius=10)
+        pygame.draw.rect(screen, border_col, rect, border_width, border_radius=10)
+
+        # Equipped Badge
         if is_sel:
-            pulse = abs((pygame.time.get_ticks() % 1200) / 600 - 1)
-            glow_alpha = int(40 + 30 * pulse)
-            glow_surf = pygame.Surface((cell_w + 8, cell_h + 8), pygame.SRCALPHA)
-            glow_surf.fill((255, 200, 80, glow_alpha))
-            screen.blit(glow_surf, (rx - 4, ry - 4))
+            tag_rect = pygame.Rect(cx - 35, ry - 12, 70, 18)
+            pygame.draw.rect(screen, (255, 210, 50), tag_rect, border_radius=8)
+            tag_txt = font_xs.render("EQUIPADO", True, (0, 0, 0))
+            screen.blit(tag_txt, (cx - tag_txt.get_width()//2, ry - 10))
 
-        # Card background
-        fill_col = (50, 58, 80) if is_sel else (30, 35, 50)
-        border_col = (255, 220, 100) if is_sel else (55, 60, 75)
-        pygame.draw.rect(screen, fill_col, rect, border_radius=6)
-        pygame.draw.rect(screen, border_col, rect, 3 if is_sel else 1, border_radius=6)
+        # Spotlight ellipse
+        spot_surf = pygame.Surface((40, 15), pygame.SRCALPHA)
+        pygame.draw.ellipse(spot_surf, (0, 0, 0, 120), (0, 0, 40, 15))
+        screen.blit(spot_surf, (cx - 20, ry + int(cell_h * 0.45)))
 
-        # Character sprite (use actual game sprite, idle frame 0)
+        # Character sprite
         sprites = char_sprites[cdef["id"]]
         if sprites:
             char_spr = sprites[0]
-            # Scale to fit nicely in the card
-            spr_h = min(int(cell_h * 0.50), 90)
+            spr_h = min(int(cell_h * 0.45), 85)
             spr_w = int(spr_h * char_spr.get_width() / char_spr.get_height())
             scaled_spr = pygame.transform.scale(char_spr, (spr_w, spr_h))
-            screen.blit(scaled_spr, (cx - spr_w // 2, ry + 8))
-            sprite_bottom = ry + 8 + spr_h
+            screen.blit(scaled_spr, (cx - spr_w // 2, ry + 12))
+            sprite_bottom = ry + 12 + spr_h
         else:
-            sprite_bottom = ry + 40
+            sprite_bottom = ry + 50
 
         # Character name
-        name_col = (255, 255, 255) if is_sel else (170, 175, 190)
-        name_txt = font_sm.render(cdef["name"], True, name_col)
-        # Clip name if too wide
-        name_x = cx - name_txt.get_width() // 2
-        screen.blit(name_txt, (max(rx + 4, name_x), sprite_bottom + 4))
+        name_col = (255, 255, 255) if is_sel else (180, 190, 200)
+        parts = cdef["name"].split(' ')
+        if len(parts) > 1:
+            line1 = font_sm.render(parts[0], True, name_col)
+            line2 = font_sm.render(" ".join(parts[1:]), True, name_col)
+            screen.blit(line1, (cx - line1.get_width() // 2, sprite_bottom + 2))
+            screen.blit(line2, (cx - line2.get_width() // 2, sprite_bottom + 16))
+        else:
+            name_txt = font_sm.render(cdef["name"], True, name_col)
+            screen.blit(name_txt, (cx - name_txt.get_width() // 2, sprite_bottom + 9))
 
-        # Stats
-        stats_y = sprite_bottom + 22
-        vel_txt = font_xs.render(f"Vel: {cdef['speed']:.1f}", True, (120, 180, 255))
-        sj_txt = font_xs.render(f"Pulos: {cdef['super_jumps']}", True, (120, 220, 150))
-        screen.blit(vel_txt, (rx + 8, stats_y))
-        screen.blit(sj_txt, (rx + 8, stats_y + 14))
+        # Progress bar stats
+        stats_y = sprite_bottom + 38
+        bar_x = rx + 32
+        bar_w = cell_w - 40
+        bar_h = 6
 
+        # Speed
+        vel_lbl = font_xs.render("VEL", True, (120, 180, 255))
+        screen.blit(vel_lbl, (rx + 6, stats_y - 2))
+        pygame.draw.rect(screen, (20, 25, 35), (bar_x, stats_y + 1, bar_w, bar_h), border_radius=3)
+        fill_w = int(bar_w * (cdef['speed'] / 5.0))
+        if fill_w > 0:
+            pygame.draw.rect(screen, (50, 200, 255), (bar_x, stats_y + 1, fill_w, bar_h), border_radius=3)
+
+        # Jumps
+        stats_y += 16
+        jmp_lbl = font_xs.render("PUL", True, (120, 220, 150))
+        screen.blit(jmp_lbl, (rx + 6, stats_y - 2))
+        pygame.draw.rect(screen, (20, 25, 35), (bar_x, stats_y + 1, bar_w, bar_h), border_radius=3)
+        fill_w = int(bar_w * (cdef['super_jumps'] / 5.0))
+        if fill_w > 0:
+            pygame.draw.rect(screen, (100, 255, 150), (bar_x, stats_y + 1, fill_w, bar_h), border_radius=3)
+
+        # Bomb perk
         if cdef["bomb"]:
-            bomb_txt = font_xs.render("+ Bombas", True, (255, 150, 80))
-            screen.blit(bomb_txt, (rx + 8, stats_y + 28))
+            stats_y += 16
+            bomb_rect = pygame.Rect(cx - 28, stats_y, 56, 14)
+            pygame.draw.rect(screen, (200, 50, 50), bomb_rect, border_radius=4)
+            bomb_txt = font_xs.render("+ BOMBAS", True, (255, 255, 255))
+            screen.blit(bomb_txt, (cx - bomb_txt.get_width()//2, stats_y - 2))
 
     # Footer instructions
     keys = [("<- ->", "Selecionar"), ("ENTER", "Jogar"), ("ESC", "Voltar")]
@@ -1099,6 +1219,75 @@ def draw_char_select():
     pygame.display.flip()
 
 
+def draw_level_select():
+    total_h = HEIGHT + HUD_H
+    for y_line in range(total_h):
+        t = y_line / total_h
+        r = int(25 + 10 * t)
+        g = int(30 + 15 * t)
+        b = int(45 + 20 * t)
+        if (y_line // 3) % 2 == 0:
+            r = max(0, r - 5); g = max(0, g - 5); b = max(0, b - 5)
+        pygame.draw.line(screen, (r, g, b), (0, y_line), (WIDTH, y_line))
+
+    pygame.draw.rect(screen, (15, 20, 30), (0, 0, WIDTH, 50))
+    pygame.draw.line(screen, (255, 200, 50), (0, 50), (WIDTH, 50), 3)
+    
+    title_text = "Selecione a Dificuldade"
+    t_shadow = font_big.render(title_text, True, (0, 0, 0))
+    t_main = font_big.render(title_text, True, (255, 255, 255))
+    screen.blit(t_shadow, (WIDTH // 2 - t_main.get_width() // 2 + 2, 12))
+    screen.blit(t_main, (WIDTH // 2 - t_main.get_width() // 2, 10))
+    
+    levels = [
+        ("Nivel 1", "1 Guindaste"),
+        ("Nivel 2", "2 Guindastes"),
+        ("Nivel 3", "3 Guindastes")
+    ]
+    
+    start_y = 120
+    spacing = 100
+    
+    for i, (name, desc) in enumerate(levels):
+        is_sel = (i + 1 == selected_level)
+        rect = pygame.Rect(WIDTH // 2 - 120, start_y + i * spacing, 240, 80)
+        
+        shadow_rect = rect.copy()
+        shadow_rect.y += 6
+        pygame.draw.rect(screen, (10, 10, 15, 180), shadow_rect, border_radius=10)
+        
+        fill_col = (60, 68, 85) if is_sel else (35, 40, 55)
+        border_col = (255, 210, 50) if is_sel else (20, 25, 35)
+        border_width = 4 if is_sel else 2
+        pygame.draw.rect(screen, fill_col, rect, border_radius=10)
+        pygame.draw.rect(screen, border_col, rect, border_width, border_radius=10)
+        
+        name_col = (255, 255, 255) if is_sel else (180, 190, 200)
+        n_txt = font_med.render(name, True, name_col)
+        d_txt = font_sm.render(desc, True, (150, 200, 255) if is_sel else (100, 120, 150))
+        
+        screen.blit(n_txt, (WIDTH // 2 - n_txt.get_width() // 2, rect.y + 15))
+        screen.blit(d_txt, (WIDTH // 2 - d_txt.get_width() // 2, rect.y + 45))
+        
+    keys = [("v ^", "Selecionar"), ("ENTER", "Jogar"), ("ESC", "Voltar")]
+    footer_y = total_h - 22
+    total_keys_w = 0
+    key_renders = []
+    for key, label in keys:
+        k_surf = font_xs.render(key, True, (255, 220, 100))
+        l_surf = font_xs.render(f" {label}  ", True, (150, 155, 170))
+        key_renders.append((k_surf, l_surf))
+        total_keys_w += k_surf.get_width() + l_surf.get_width()
+    draw_kx = WIDTH // 2 - total_keys_w // 2
+    for k_surf, l_surf in key_renders:
+        screen.blit(k_surf, (draw_kx, footer_y))
+        draw_kx += k_surf.get_width()
+        screen.blit(l_surf, (draw_kx, footer_y))
+        draw_kx += l_surf.get_width()
+
+    pygame.display.flip()
+
+selected_level = 1
 game_state = "title"
 play_music("title.mid", loops=-1)
 
@@ -1131,8 +1320,7 @@ while True:
                     game_state = "title"
                     play_music("title.mid", loops=-1)
                 elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
-                    stop_music()
-                    reset_game()
+                    game_state = "level_select"
                 elif event.key == pygame.K_LEFT:
                     selected_char = (selected_char - 1) % len(CHAR_DEFS)
                 elif event.key == pygame.K_RIGHT:
@@ -1141,6 +1329,24 @@ while True:
                     selected_char = (selected_char - 3) % len(CHAR_DEFS)
                 elif event.key == pygame.K_DOWN:
                     selected_char = (selected_char + 3) % len(CHAR_DEFS)
+        clock.tick(30)
+
+    elif game_state == "level_select":
+        draw_level_select()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    game_state = "char_select"
+                elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                    stop_music()
+                    reset_game(selected_level)
+                elif event.key == pygame.K_UP:
+                    selected_level = max(1, selected_level - 1)
+                elif event.key == pygame.K_DOWN:
+                    selected_level = min(3, selected_level + 1)
         clock.tick(30)
 
     elif game_state == "play":
@@ -1153,7 +1359,7 @@ while True:
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_r:
                         stop_music()
-                        reset_game()
+                        reset_game(selected_level)
                     elif event.key == pygame.K_q:
                         pygame.quit()
                         sys.exit()
