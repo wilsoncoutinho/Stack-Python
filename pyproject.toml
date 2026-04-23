@@ -1,0 +1,16 @@
+[project]
+name = "stack-attack"
+version = "1.0.0"
+description = "Stack Attack - A classic crate-stacking puzzle game"
+requires-python = ">=3.10"
+dependencies = ["pygame-ce>=2.5"]
+
+[tool.poetry]
+name = "stack-attack"
+version = "1.0.0"
+description = "Stack Attack - A classic crate-stacking puzzle game"
+authors = []
+
+[tool.poetry.dependencies]
+python = "^3.10"
+pygame-ce = "^2.5"
