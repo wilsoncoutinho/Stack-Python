@@ -27,7 +27,7 @@ font_xs = pygame.font.SysFont("consolas", 14)
 MAGENTA = (255, 0, 255)
 NUM_CRATE_TYPES = 5
 BOMB_TYPE = 8
-POWERUP_HELMET_TYPE = 5
+POWERUP_HELMET_TYPE = 6
 GRAVITY_MS = 300
 INITIAL_SPAWN_MS = 3000
 GRAVITY_EVENT = pygame.USEREVENT + 1
@@ -68,7 +68,7 @@ crane_sprites = slice_sheet(load_img("extracted/crane.png"), CRANE_FW, 18, TILE_
 # Frame mapping: crane frame index for each crate type (1-5) and empty
 # Frame 0=yellow, 1=red, 2=green-striped, 3=blue, 4=red-variant, ..., 10=empty
 CRANE_EMPTY_FRAME = 10
-CRANE_FRAME_FOR_CRATE = {1: 0, 2: 1, 3: 2, 4: 3, 5: 4}  # crate_type -> crane frame
+CRANE_FRAME_FOR_CRATE = {1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5}  # crate_type -> crane frame
 CRANE_SPRITE_W = crane_sprites[0].get_width() if crane_sprites else TILE_SIZE * 2
 CRANE_SPRITE_H = crane_sprites[0].get_height() if crane_sprites else TILE_SIZE * 2
 
@@ -189,6 +189,8 @@ def approach(a, b, speed):
 def crate_sprite_for_type(crate_type):
     if crate_type == BOMB_TYPE:
         return bomb_sprite
+    if crate_type == POWERUP_HELMET_TYPE:
+        return crate_sprites[5]
     return crate_sprites[(crate_type - 1) % NUM_CRATE_TYPES]
 
 
@@ -1433,8 +1435,11 @@ while True:
 
             if event.type == SPAWN_EVENT:
                 x = random.randint(0, COLS - 1)
-                if random.random() < 0.06:
+                r = random.random()
+                if r < 0.06:
                     ctype = BOMB_TYPE
+                elif r < 0.10:
+                    ctype = POWERUP_HELMET_TYPE
                 else:
                     ctype = random.randint(1, NUM_CRATE_TYPES)
                 queue_crate_spawn(x, ctype)
