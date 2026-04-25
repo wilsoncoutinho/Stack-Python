@@ -55,7 +55,7 @@ bg_img = pygame.transform.scale(load_img("extracted/back.png"), (WIDTH, HEIGHT))
 title_img = pygame.transform.scale(load_img("extracted/title.png"), (WIDTH, HEIGHT + HUD_H))
 
 crate_sprites = slice_sheet(load_img("extracted/crates.png"), 8, 8, TILE_SIZE / 8)
-_bomb_img = pygame.image.load(os.path.join(ASSETS, "extracted/square_bomb.png")).convert_alpha()
+_bomb_img = pygame.image.load(os.path.join(ASSETS, "extracted/black_bomb.png")).convert_alpha()
 bomb_sprite = pygame.transform.scale(_bomb_img, (TILE_SIZE, TILE_SIZE))
 
 explosion_anim_cells = []
@@ -140,6 +140,45 @@ def stop_music():
             pass
 
 
+def load_sound(filename):
+    """Load a sound effect and return the Sound object"""
+    if not SOUND_OK:
+        return None
+    path = os.path.join(ASSETS, filename)
+    if os.path.exists(path):
+        try:
+            return pygame.mixer.Sound(path)
+        except Exception:
+            pass
+    return None
+
+
+def play_sound(sound):
+    """Play a sound effect if it's loaded"""
+    if sound and SOUND_OK:
+        try:
+            sound.play()
+        except Exception:
+            pass
+
+
+# Load sound effects (procedurally generated WAV files)
+sound_jump = load_sound("sounds/jump.wav")
+sound_super_jump = load_sound("sounds/super_jump.wav")
+sound_push = load_sound("sounds/push.wav")
+sound_land = load_sound("sounds/land.wav")
+sound_explode = load_sound("sounds/explode.wav")
+sound_powerup = load_sound("sounds/powerup.wav")
+sound_bomb = load_sound("sounds/bomb.wav")
+sound_stun = load_sound("sounds/stun.wav")
+sound_combo = load_sound("sounds/combo.wav")
+sound_line_clear = load_sound("sounds/line_clear.wav")
+sound_game_over_sfx = load_sound("sounds/game_over.wav")
+sound_menu_move = load_sound("sounds/menu_move.wav")
+sound_menu_select = load_sound("sounds/menu_select.wav")
+sound_helmet = load_sound("sounds/helmet.wav")
+
+
 def approach(a, b, speed):
     diff = b - a
     if abs(diff) <= speed:
@@ -207,15 +246,18 @@ class Personagem:
         if self.alive and self.stun_timer <= 0:
             self.jump_queued = True
             self.jump_buffer = JUMP_BUFFER_FRAMES
+            play_sound(sound_jump)
 
     def super_pular(self):
         if self.alive and self.stun_timer <= 0 and self.super_jumps_left > 0:
             self.super_jump_queued = True
             self.super_jump_buffer = JUMP_BUFFER_FRAMES
+            play_sound(sound_super_jump)
 
     def ativar_stun(self, duracao=25):
         self.stun_timer = duracao
         self.vel_x = 0
+        play_sound(sound_stun)
 
     def _proximo_caixa(self, board_ref):
         probe_top = self.y + self.PH / 3
@@ -363,6 +405,7 @@ class Personagem:
                 if pushed:
                     self.vel_x = PUSH_HORIZONTAL_SPEED * self.dir
                     self.estado = "empurrando"
+                    play_sound(sound_push)
                 else:
                     self.vel_x = 0
             elif self.vel_x != 0 and self.no_chao:
@@ -429,6 +472,7 @@ class Personagem:
                         self.helmet_timer = 600
                         board_ref[ty][tx] = 0
                         score += 50
+                        play_sound(sound_helmet)
                         continue
                         
                     if self.vel_x > 0:
@@ -489,6 +533,7 @@ class Personagem:
                     self.helmet_timer = 600
                     board_ref[ty][tx] = 0
                     score += 50
+                    play_sound(sound_helmet)
                     continue
                     
                 if self.vel_y > 0:
@@ -600,6 +645,7 @@ class Personagem:
             if box["type"] == POWERUP_HELMET_TYPE:
                 self.helmet_timer = 600
                 score += 50
+                play_sound(sound_powerup)
                 falling_boxes_list.remove(box)
                 continue
 
@@ -618,15 +664,18 @@ class Personagem:
             if stomp_hit:
                 falling_boxes_list.remove(box)
                 score += 10
+                play_sound(sound_explode)
                 self.vel_y = min(self.vel_y, -4)
             elif headbutt_hit:
                 falling_boxes_list.remove(box)
                 score += 10
+                play_sound(sound_explode)
                 self.vel_y = max(self.vel_y, 2)
                 floating_explosions.append({"px": box_px, "py": box_py, "timer": 20})
             else:
                 self.alive = False
                 stop_timers()
+                play_sound(sound_game_over_sfx)
                 play_music("gameover.mid")
             return
 
@@ -641,6 +690,7 @@ class Personagem:
             handle_bomb(bx, by)
         else:
             board_ref[by][bx] = BOMB_TYPE
+        play_sound(sound_bomb)
         self.bomb_cooldown = 30
         return True
 
@@ -756,6 +806,7 @@ def do_post_landing():
         spawn_interval = max(800, int(INITIAL_SPAWN_MS / difficulty))
         pygame.time.set_timer(SPAWN_EVENT, spawn_interval)
         line_clear_flash = 15
+        play_sound(sound_line_clear)
         play_music("fullrow.mid")
 
     # Check for match-3 combos
@@ -764,6 +815,7 @@ def do_post_landing():
         combo_count += 1
         score += 50 * combo_count
         to_explode.update(matched)
+        play_sound(sound_combo)
 
     if to_explode:
         explosion_anim_cells = list(to_explode)
@@ -775,6 +827,7 @@ def do_post_landing():
 def handle_bomb(bx, by):
     global score, explosion_anim_cells, explosion_anim_timer
     explosion_anim_cells = []
+    play_sound(sound_explode)
     for dx in range(-1, 2):
         for dy in range(-1, 2):
             nx, ny = bx + dx, by + dy
@@ -796,6 +849,7 @@ def handle_bomb(bx, by):
             if dist < TILE_SIZE * 1.5:
                 player.alive = False
                 stop_timers()
+                play_sound(sound_game_over_sfx)
                 play_music("gameover.mid")
                 return
             player.ativar_stun(30)
@@ -817,6 +871,7 @@ def handle_gravity():
             bx_pos, by_pos, btype = box["x"], box["y"], box["type"]
             board[by_pos][bx_pos] = btype
             falling_boxes.remove(box)
+            play_sound(sound_land)
             pgx, pgy = player.grid_x, player.grid_y
             if pgx == bx_pos and pgy == by_pos:
                 player.ativar_stun(15)
@@ -1302,6 +1357,7 @@ while True:
                 sys.exit()
             if event.type == pygame.KEYDOWN:
                 if event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                    play_sound(sound_menu_select)
                     stop_music()
                     game_state = "char_select"
                 elif event.key == pygame.K_q:
@@ -1317,18 +1373,24 @@ while True:
                 sys.exit()
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
+                    play_sound(sound_menu_move)
                     game_state = "title"
                     play_music("title.mid", loops=-1)
                 elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                    play_sound(sound_menu_select)
                     game_state = "level_select"
                 elif event.key == pygame.K_LEFT:
                     selected_char = (selected_char - 1) % len(CHAR_DEFS)
+                    play_sound(sound_menu_move)
                 elif event.key == pygame.K_RIGHT:
                     selected_char = (selected_char + 1) % len(CHAR_DEFS)
+                    play_sound(sound_menu_move)
                 elif event.key == pygame.K_UP:
                     selected_char = (selected_char - 3) % len(CHAR_DEFS)
+                    play_sound(sound_menu_move)
                 elif event.key == pygame.K_DOWN:
                     selected_char = (selected_char + 3) % len(CHAR_DEFS)
+                    play_sound(sound_menu_move)
         clock.tick(30)
 
     elif game_state == "level_select":
@@ -1339,14 +1401,18 @@ while True:
                 sys.exit()
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
+                    play_sound(sound_menu_move)
                     game_state = "char_select"
                 elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                    play_sound(sound_menu_select)
                     stop_music()
                     reset_game(selected_level)
                 elif event.key == pygame.K_UP:
                     selected_level = max(1, selected_level - 1)
+                    play_sound(sound_menu_move)
                 elif event.key == pygame.K_DOWN:
                     selected_level = min(3, selected_level + 1)
+                    play_sound(sound_menu_move)
         clock.tick(30)
 
     elif game_state == "play":
