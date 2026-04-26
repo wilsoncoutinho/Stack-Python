@@ -74,23 +74,23 @@ CRANE_SPRITE_H = crane_sprites[0].get_height() if crane_sprites else TILE_SIZE *
 
 CHAR_DEFS = [
     {"id": "pete", "name": "Part-time Pete", "sprite": "man.png", "icon": "iconman.png",
-     "speed": 3.5, "jump": -7.5, "super_jump": -10.5, "super_jumps": 0, "bomb": False,
+     "speed": 3.5, "jump": -7.5, "super_jump": -10.5, "super_jumps": 0, "bombs": 0,
      "desc": "Basico. Sem super pulos."},
     {"id": "lizzie", "name": "Lazy Lizzie", "sprite": "woman.png", "icon": "icwoman.png",
-     "speed": 4.5, "jump": -7.0, "super_jump": -11.5, "super_jumps": 4, "bomb": False,
+     "speed": 4.5, "jump": -7.0, "super_jump": -11.5, "super_jumps": 4, "bombs": 0,
      "desc": "Rapida. 4 super pulos."},
     {"id": "frank", "name": "Forklift Frank", "sprite": "man2.png", "icon": "iconman2.png",
-     "speed": 4.5, "jump": -8.0, "super_jump": -12.0, "super_jumps": 1, "bomb": False,
+     "speed": 4.5, "jump": -8.0, "super_jump": -12.0, "super_jumps": 1, "bombs": 0,
      "desc": "Rapido, 1 super pulo."},
     {"id": "will", "name": "Warehouse Will", "sprite": "man3.png", "icon": "iconman3.png",
-     "speed": 4.0, "jump": -7.5, "super_jump": -11.5, "super_jumps": 2, "bomb": False,
+     "speed": 4.0, "jump": -7.5, "super_jump": -11.5, "super_jumps": 2, "bombs": 0,
      "desc": "Agil. 2 super pulos."},
     {"id": "cath", "name": "Crate-Crazy Cath", "sprite": "woman2.png", "icon": "icwoman2.png",
-     "speed": 5.0, "jump": -7.5, "super_jump": -12.0, "super_jumps": 3, "bomb": False,
+     "speed": 5.0, "jump": -7.5, "super_jump": -12.0, "super_jumps": 3, "bombs": 0,
      "desc": "Muito rapida. 3 super pulos."},
     {"id": "sam", "name": "Super-Stacker Sam", "sprite": "man4.png", "icon": "iconman4.png",
-     "speed": 5.0, "jump": -8.0, "super_jump": -13.0, "super_jumps": 5, "bomb": True,
-     "desc": "O melhor! 5 super pulos + bombas."},
+     "speed": 5.0, "jump": -8.0, "super_jump": -13.0, "super_jumps": 5, "bombs": 3,
+     "desc": "O melhor! 5 super pulos + 3 bombas."},
 ]
 
 char_sprites = {}
@@ -210,8 +210,9 @@ class Personagem:
         self.jump_force = cdef["jump"]
         self.super_jump_force = cdef["super_jump"]
         self.max_super_jumps = cdef["super_jumps"]
-        self.can_bomb = cdef["bomb"]
+        self.max_bombs = cdef.get("bombs", 0)
         self.super_jumps_left = cdef["super_jumps"]
+        self.bombs_left = self.max_bombs
         self.no_chao = False
         self.estado = "parado"
         self.dir = 1
@@ -674,6 +675,7 @@ class Personagem:
                 play_sound(sound_explode)
                 self.vel_y = max(self.vel_y, 2)
                 floating_explosions.append({"px": box_px, "py": box_py, "timer": 20})
+                self.helmet_timer = 0  # Only guarantees 1 crate break
             else:
                 self.alive = False
                 stop_timers()
@@ -682,7 +684,7 @@ class Personagem:
             return
 
     def try_place_bomb(self, board_ref):
-        if not self.can_bomb or self.bomb_cooldown > 0:
+        if self.bombs_left <= 0 or self.bomb_cooldown > 0:
             return False
         bx = self.grid_x + self.dir
         by = self.grid_y
@@ -694,10 +696,12 @@ class Personagem:
             board_ref[by][bx] = BOMB_TYPE
         play_sound(sound_bomb)
         self.bomb_cooldown = 30
+        self.bombs_left -= 1
         return True
 
 
 board = []
+helmet_timers = []
 player = None
 falling_boxes = []
 push_animations = []
@@ -719,9 +723,10 @@ match_anim_timer = 0
 def reset_game(start_diff=1.0):
     global board, player, falling_boxes, push_animations, score, game_state
     global cranes, crane_frame, difficulty, spawn_interval
-    global line_clear_flash, combo_count, match_anim_cells, match_anim_timer
+    global line_clear_flash, combo_count, match_anim_cells, match_anim_timer, helmet_timers
     char_id = CHAR_DEFS[selected_char]["id"]
     board = [[0 for _ in range(COLS)] for _ in range(ROWS)]
+    helmet_timers = [[0 for _ in range(COLS)] for _ in range(ROWS)]
     player = Personagem(5, ROWS - 1, char_id)
     falling_boxes = []
     push_animations = []
@@ -784,7 +789,9 @@ def apply_board_gravity():
             if board[y][x] != 0:
                 if write_y != y:
                     board[write_y][x] = board[y][x]
+                    helmet_timers[write_y][x] = helmet_timers[y][x]
                     board[y][x] = 0
+                    helmet_timers[y][x] = 0
                 write_y -= 1
 
 
@@ -804,8 +811,8 @@ def do_post_landing():
                 
     if cleared > 0:
         score += 100 * cleared
-        difficulty = 1.0 + score / 100.0
-        spawn_interval = max(800, int(INITIAL_SPAWN_MS / difficulty))
+        difficulty = 1.0 + score / 50.0  # Increased difficulty scaling
+        spawn_interval = max(400, int(INITIAL_SPAWN_MS / difficulty)) # Higher max speed
         pygame.time.set_timer(SPAWN_EVENT, spawn_interval)
         line_clear_flash = 15
         play_sound(sound_line_clear)
@@ -872,6 +879,8 @@ def handle_gravity():
         if landed:
             bx_pos, by_pos, btype = box["x"], box["y"], box["type"]
             board[by_pos][bx_pos] = btype
+            if btype == POWERUP_HELMET_TYPE:
+                helmet_timers[by_pos][bx_pos] = 180  # 3 seconds at 60 fps
             falling_boxes.remove(box)
             play_sound(sound_land)
             pgx, pgy = player.grid_x, player.grid_y
@@ -913,12 +922,13 @@ def queue_crate_spawn(grid_x, crate_type):
     if len(cranes) >= active_count:
         return
     
+    speed = 2.0 + difficulty * 0.2
     if random.choice([True, False]):
         x = -CRANE_SPRITE_W
-        vx = CRANE_SPEED
+        vx = speed
     else:
         x = WIDTH + CRANE_SPRITE_W
-        vx = -CRANE_SPEED
+        vx = -speed
         
     cranes.append({
         "x": float(x),
@@ -1005,6 +1015,9 @@ def update_box_visuals():
     global combo_count
     for anim in completed_pushes:
         board[anim["y"]][anim["x"]] = anim["type"]
+        if anim["type"] == POWERUP_HELMET_TYPE:
+            helmet_timers[anim["y"]][anim["x"]] = anim.get("helmet_timer", 180)
+        
         if anim["type"] == BOMB_TYPE:
             handle_bomb(anim["x"], anim["y"])
         else:
@@ -1031,6 +1044,11 @@ def draw_hud():
     if player and player.helmet_timer > 0:
         p_txt = font_sm.render(f"Poder(Cabecada): {player.helmet_timer // 60}s", True, (100, 255, 100))
         screen.blit(p_txt, (10, HEIGHT + 32))
+        
+    if player and getattr(player, "max_bombs", 0) > 0:
+        b_txt = font_sm.render(f"Bombas: {player.bombs_left}/{player.max_bombs}", True, (255, 100, 100))
+        # Place it on the right side if there's no combo or powerup occupying the exact spot
+        screen.blit(b_txt, (WIDTH - b_txt.get_width() - 10, HEIGHT + 32))
 
 
 def draw_crane():
@@ -1070,6 +1088,11 @@ def draw_game():
     for y in range(ROWS):
         for x in range(COLS):
             if board[y][x] != 0 and (x, y) not in animated_cells:
+                if board[y][x] == POWERUP_HELMET_TYPE:
+                    ht = helmet_timers[y][x]
+                    # Flash during the last second (60 frames)
+                    if 0 < ht < 60 and (ht // 5) % 2 == 0:
+                        continue
                 screen.blit(crate_sprite_for_type(board[y][x]), (x * TILE_SIZE, y * TILE_SIZE))
 
     if explosion_anim_timer > 0:
@@ -1249,7 +1272,7 @@ def draw_char_select():
             pygame.draw.rect(screen, (100, 255, 150), (bar_x, stats_y + 1, fill_w, bar_h), border_radius=3)
 
         # Bomb perk
-        if cdef["bomb"]:
+        if cdef.get("bombs", 0) > 0:
             stats_y += 16
             bomb_rect = pygame.Rect(cx - 28, stats_y, 56, 14)
             pygame.draw.rect(screen, (200, 50, 50), bomb_rect, border_radius=4)
@@ -1344,145 +1367,164 @@ def draw_level_select():
 
     pygame.display.flip()
 
-selected_level = 1
-game_state = "title"
-play_music("title.mid", loops=-1)
+def run_game():
+    global selected_level, game_state, selected_char, line_clear_flash, explosion_anim_timer
+    selected_level = 1
+    game_state = "title"
+    play_music("title.mid", loops=-1)
 
-while True:
-    dt = clock.get_time()
+    while True:
+        dt = clock.get_time()
 
-    if game_state == "title":
-        draw_title()
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            if event.type == pygame.KEYDOWN:
-                if event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                    play_sound(sound_menu_select)
-                    stop_music()
-                    game_state = "char_select"
-                elif event.key == pygame.K_q:
+        if game_state == "title":
+            draw_title()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
-        clock.tick(30)
-
-    elif game_state == "char_select":
-        draw_char_select()
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    play_sound(sound_menu_move)
-                    game_state = "title"
-                    play_music("title.mid", loops=-1)
-                elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
-                    play_sound(sound_menu_select)
-                    game_state = "level_select"
-                elif event.key == pygame.K_LEFT:
-                    selected_char = (selected_char - 1) % len(CHAR_DEFS)
-                    play_sound(sound_menu_move)
-                elif event.key == pygame.K_RIGHT:
-                    selected_char = (selected_char + 1) % len(CHAR_DEFS)
-                    play_sound(sound_menu_move)
-                elif event.key == pygame.K_UP:
-                    selected_char = (selected_char - 3) % len(CHAR_DEFS)
-                    play_sound(sound_menu_move)
-                elif event.key == pygame.K_DOWN:
-                    selected_char = (selected_char + 3) % len(CHAR_DEFS)
-                    play_sound(sound_menu_move)
-        clock.tick(30)
-
-    elif game_state == "level_select":
-        draw_level_select()
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    play_sound(sound_menu_move)
-                    game_state = "char_select"
-                elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                    play_sound(sound_menu_select)
-                    stop_music()
-                    reset_game(selected_level)
-                elif event.key == pygame.K_UP:
-                    selected_level = max(1, selected_level - 1)
-                    play_sound(sound_menu_move)
-                elif event.key == pygame.K_DOWN:
-                    selected_level = min(3, selected_level + 1)
-                    play_sound(sound_menu_move)
-        clock.tick(30)
-
-    elif game_state == "play":
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-
-            if not player.alive:
                 if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_r:
+                    if event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                        play_sound(sound_menu_select)
                         stop_music()
-                        reset_game(selected_level)
+                        game_state = "char_select"
                     elif event.key == pygame.K_q:
                         pygame.quit()
                         sys.exit()
-                continue
+            clock.tick(30)
 
-            if event.type == SPAWN_EVENT:
-                x = random.randint(0, COLS - 1)
-                r = random.random()
-                if r < 0.06:
-                    ctype = BOMB_TYPE
-                elif r < 0.10:
-                    ctype = POWERUP_HELMET_TYPE
-                else:
-                    ctype = random.randint(1, NUM_CRATE_TYPES)
-                queue_crate_spawn(x, ctype)
+        elif game_state == "char_select":
+            draw_char_select()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        play_sound(sound_menu_move)
+                        game_state = "title"
+                        play_music("title.mid", loops=-1)
+                    elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                        play_sound(sound_menu_select)
+                        game_state = "level_select"
+                    elif event.key == pygame.K_LEFT:
+                        selected_char = (selected_char - 1) % len(CHAR_DEFS)
+                        play_sound(sound_menu_move)
+                    elif event.key == pygame.K_RIGHT:
+                        selected_char = (selected_char + 1) % len(CHAR_DEFS)
+                        play_sound(sound_menu_move)
+                    elif event.key == pygame.K_UP:
+                        selected_char = (selected_char - 3) % len(CHAR_DEFS)
+                        play_sound(sound_menu_move)
+                    elif event.key == pygame.K_DOWN:
+                        selected_char = (selected_char + 3) % len(CHAR_DEFS)
+                        play_sound(sound_menu_move)
+            clock.tick(30)
 
-            if event.type == GRAVITY_EVENT:
-                handle_gravity()
+        elif game_state == "level_select":
+            draw_level_select()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        play_sound(sound_menu_move)
+                        game_state = "char_select"
+                    elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                        play_sound(sound_menu_select)
+                        stop_music()
+                        reset_game(selected_level)
+                    elif event.key == pygame.K_UP:
+                        selected_level = max(1, selected_level - 1)
+                        play_sound(sound_menu_move)
+                    elif event.key == pygame.K_DOWN:
+                        selected_level = min(3, selected_level + 1)
+                        play_sound(sound_menu_move)
+            clock.tick(30)
 
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    stop_timers()
-                    stop_music()
-                    game_state = "title"
-                    play_music("title.mid", loops=-1)
+        elif game_state == "play":
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+
+                if not player.alive:
+                    if event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_r:
+                            stop_music()
+                            reset_game(selected_level)
+                        elif event.key == pygame.K_q:
+                            pygame.quit()
+                            sys.exit()
                     continue
-                if event.key in (pygame.K_UP, pygame.K_w):
-                    player.pular()
-                elif event.key == pygame.K_SPACE:
-                    player.super_pular()
-                elif event.key == pygame.K_b:
-                    player.try_place_bomb(board)
 
-        if player.alive:
-            keys = pygame.key.get_pressed()
-            teclas = {
-                "esquerda": keys[pygame.K_LEFT] or keys[pygame.K_a],
-                "direita": keys[pygame.K_RIGHT] or keys[pygame.K_d],
-            }
-            player.atualizar(teclas, board)
-            player.check_falling_collision(falling_boxes)
-            update_crane()
+                if event.type == SPAWN_EVENT:
+                    x = random.randint(0, COLS - 1)
+                    r = random.random()
+                    if r < 0.06:
+                        ctype = BOMB_TYPE
+                    elif r < 0.10:
+                        ctype = POWERUP_HELMET_TYPE
+                    else:
+                        ctype = random.randint(1, NUM_CRATE_TYPES)
+                    queue_crate_spawn(x, ctype)
 
-            if player.bomb_cooldown > 0:
-                player.bomb_cooldown -= 1
+                if event.type == GRAVITY_EVENT:
+                    handle_gravity()
 
-            if line_clear_flash > 0:
-                line_clear_flash -= 1
-            if explosion_anim_timer > 0:
-                explosion_anim_timer -= 1
-                if explosion_anim_timer == 0:
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        stop_timers()
+                        stop_music()
+                        game_state = "title"
+                        play_music("title.mid", loops=-1)
+                        continue
+                    if event.key in (pygame.K_UP, pygame.K_w):
+                        player.pular()
+                    elif event.key == pygame.K_SPACE:
+                        player.super_pular()
+                    elif event.key == pygame.K_b:
+                        player.try_place_bomb(board)
+
+            if player.alive:
+                keys = pygame.key.get_pressed()
+                teclas = {
+                    "esquerda": keys[pygame.K_LEFT] or keys[pygame.K_a],
+                    "direita": keys[pygame.K_RIGHT] or keys[pygame.K_d],
+                }
+                player.atualizar(teclas, board)
+                player.check_falling_collision(falling_boxes)
+                update_crane()
+
+                if player.bomb_cooldown > 0:
+                    player.bomb_cooldown -= 1
+
+                if line_clear_flash > 0:
+                    line_clear_flash -= 1
+                if explosion_anim_timer > 0:
+                    explosion_anim_timer -= 1
+                    if explosion_anim_timer == 0:
+                        apply_board_gravity()
+                        do_post_landing()
+
+                needs_gravity = False
+                for y in range(ROWS):
+                    for x in range(COLS):
+                        if board[y][x] == POWERUP_HELMET_TYPE:
+                            if helmet_timers[y][x] > 0:
+                                helmet_timers[y][x] -= 1
+                                if helmet_timers[y][x] <= 0:
+                                    board[y][x] = 0
+                                    needs_gravity = True
+                if needs_gravity:
                     apply_board_gravity()
                     do_post_landing()
 
-            update_box_visuals()
+                update_box_visuals()
 
-        draw_game()
-        clock.tick(60)
+            draw_game()
+            clock.tick(60)
+
+
+if __name__ == "__main__":
+    run_game()

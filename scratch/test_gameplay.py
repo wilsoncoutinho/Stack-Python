@@ -46,6 +46,7 @@ def test(name, condition):
         print(f"  FAIL: {name}")
 
 def fresh_board():
+    exec_globals["helmet_timers"] = [[0 for _ in range(COLS)] for _ in range(ROWS)]
     return [[0 for _ in range(COLS)] for _ in range(ROWS)]
 
 def fresh_player(char_id="pete"):
@@ -234,7 +235,7 @@ test("Diff 10 = capped at 5", exec_globals["current_crane_count"]() == 5)
 print("\n=== Powerup Helmet ===")
 # Test POWERUP_HELMET_TYPE value overlap check
 test("Helmet type != bomb type", POWERUP_HELMET_TYPE != BOMB_TYPE)
-test("Helmet type (5) is within crate range", 1 <= POWERUP_HELMET_TYPE <= NUM_CRATE_TYPES)
+test("Helmet type is distinct from regular crates", POWERUP_HELMET_TYPE > NUM_CRATE_TYPES)
 
 # ─── TEST GROUP 10: Bomb Placement (Sam only) ───
 print("\n=== Bomb Placement ===")
