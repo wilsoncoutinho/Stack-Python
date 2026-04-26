@@ -79,7 +79,7 @@ The original `.mmf` (Yamaha SMAF) files cannot be loaded by pygame — they cont
 
 ---
 
-## 🔲 Priority 4: Code Quality & Polish
+## ✅ Priority 4: Code Quality & Polish — IN PROGRESS
 
 ### Error Handling
 - [ ] Wrap all asset loading in try/except with fallback sprites/sounds
@@ -87,9 +87,9 @@ The original `.mmf` (Yamaha SMAF) files cannot be loaded by pygame — they cont
 - [ ] Graceful exit if critical assets are missing
 
 ### Potential Improvements
-- [ ] **Pause menu**: ESC during gameplay should pause instead of immediately returning to title
-- [ ] **High score system**: Save/load best scores per character
-- [ ] **Difficulty scaling refinement**: Current formula `1.0 + score / 100.0` may scale too fast
+- [x] **Pause menu**: Retro TV "PAUSE" overlay and ad-system monetization
+- [x] **High score system**: Persistent JSON storage, per-character records
+- [x] **Difficulty scaling refinement**: Adjusted formula for faster progression
 - [ ] **Crate spawn balance**: Ensure crates don't stack too quickly at high difficulty
 - [ ] **Visual polish**: Add screen shake on explosions, particle effects for combos
 
