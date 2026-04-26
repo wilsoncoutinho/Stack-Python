@@ -454,9 +454,6 @@ class Personagem:
         if not self.alive:
             return
 
-        if self.helmet_timer > 0:
-            self.helmet_timer -= 1
-
         if self.stun_timer > 0:
             self.stun_timer -= 1
             self.estado = "stun"
@@ -475,6 +472,8 @@ class Personagem:
             self.super_jump_buffer -= 1
         if self.bomb_cooldown > 0:
             self.bomb_cooldown -= 1
+        if self.helmet_timer > 0:
+            self.helmet_timer -= 1.0/60.0
 
         if self.push_cooldown > 0:
             moving_forward = (self.dir == -1 and teclas.get("esquerda")) or (self.dir == 1 and teclas.get("direita"))
@@ -604,7 +603,7 @@ class Personagem:
                     if not r.colliderect(tile_r):
                         continue
                     if board_ref[ty][tx] == POWERUP_HELMET_TYPE:
-                        self.helmet_timer = 600
+                        self.helmet_timer = 5.0 # 5 seconds
                         board_ref[ty][tx] = 0
                         score += 50
                         play_sound(sound_helmet)
@@ -665,7 +664,7 @@ class Personagem:
                 if not r.colliderect(tile_r):
                     continue
                 if board_ref[ty][tx] == POWERUP_HELMET_TYPE:
-                    self.helmet_timer = 600
+                    self.helmet_timer = 5.0 # 5 seconds
                     board_ref[ty][tx] = 0
                     score += 50
                     play_sound(sound_helmet)
@@ -692,7 +691,13 @@ class Personagem:
         landing_y = from_y
         while landing_y < ROWS - 1 and board_ref[landing_y + 1][to_x] == 0:
             landing_y += 1
-        register_push_animation(from_x, from_y, to_x, landing_y, crate_type)
+            
+        bt = 0
+        if crate_type == BOMB_TYPE:
+            bt = bomb_timers[from_y][from_x]
+            bomb_timers[from_y][from_x] = 0 # Clear original
+            
+        register_push_animation(from_x, from_y, to_x, landing_y, crate_type, bomb_timer=bt)
 
     def _atualizar_anim(self):
         prev = getattr(self, '_last_estado', None)
@@ -778,7 +783,7 @@ class Personagem:
                 continue
                 
             if box["type"] == POWERUP_HELMET_TYPE:
-                self.helmet_timer = 600
+                self.helmet_timer = 5.0 # 5 seconds
                 score += 50
                 play_sound(sound_powerup)
                 falling_boxes_list.remove(box)
@@ -825,19 +830,31 @@ class Personagem:
     def try_place_bomb(self, board_ref):
         global bomb_timers
         if self.bombs_left > 0 and self.bomb_cooldown <= 0:
+            # Place at player's leg level in front of them
             tx = self.grid_x + self.dir
-            ty = self.grid_y + 1
-            if 0 <= tx < COLS and 0 <= ty < ROWS:
-                if board_ref[ty][tx] == 0:
-                    board_ref[ty][tx] = BOMB_TYPE
-                    bomb_timers[ty][tx] = 180
-                else:
-                    handle_bomb(tx, ty)
-                
-                self.bombs_left -= 1
-                self.bomb_cooldown = 30
-                play_sound(sound_bomb)
-                return True
+            ty = self.grid_y
+            
+            # Clamp tx/ty
+            old_tx, old_ty = tx, ty
+            tx = max(0, min(COLS - 1, tx))
+            ty = max(0, min(ROWS - 1, ty))
+            
+            # If we are at the edge and trying to place outside, don't place on ourself
+            if tx == self.grid_x:
+                return False
+            
+            if board_ref[ty][tx] == BOMB_TYPE:
+                # Target is already a bomb: do nothing
+                return False
+            else:
+                # Replace whatever is there (empty or crate) with a 3s bomb
+                board_ref[ty][tx] = BOMB_TYPE
+                bomb_timers[ty][tx] = 180
+            
+            self.bombs_left -= 1
+            self.bomb_cooldown = 40
+            play_sound(sound_bomb)
+            return True
         return False
 
 
@@ -1004,8 +1021,12 @@ def handle_bomb(bx, by):
                 explosion_anim_cells.append((nx, ny))
                 
     explosion_anim_timer = 20  # 4 frames * 5 ticks
-
-    if player and player.alive:
+    
+    # Helmet protects against explosions!
+    if player and player.alive and player.helmet_timer > 0:
+        # Player is safe
+        pass
+    elif player and player.alive:
         pgx, pgy = player.grid_x, player.grid_y
         # If player is anywhere in the 3x3 area (including the extra height of the character)
         p_row_top = player.grid_y
@@ -1056,7 +1077,7 @@ def handle_gravity():
             box["y"] += 1
 
 
-def register_push_animation(from_x, from_y, to_x, landing_y, crate_type):
+def register_push_animation(from_x, from_y, to_x, landing_y, crate_type, bomb_timer=0):
     slide_target_px = to_x * TILE_SIZE
     slide_target_py = from_y * TILE_SIZE
     final_target_py = landing_y * TILE_SIZE
@@ -1070,6 +1091,7 @@ def register_push_animation(from_x, from_y, to_x, landing_y, crate_type):
         "target_py": slide_target_py,
         "final_py": final_target_py,
         "stage": "slide",
+        "bomb_timer": bomb_timer
     })
 
 
@@ -1185,37 +1207,54 @@ def update_box_visuals():
             helmet_timers[anim["y"]][anim["x"]] = anim.get("helmet_timer", 180)
         
         if anim["type"] == BOMB_TYPE:
-            bomb_timers[anim["y"]][anim["x"]] = 180
-            handle_bomb(anim["x"], anim["y"])
-        else:
-            combo_count = 0
-            apply_board_gravity()
-            do_post_landing()
+            # Transfer the fuse timer to the new location
+            bomb_timers[anim["y"]][anim["x"]] = anim.get("bomb_timer", 180)
+        
+        combo_count = 0
+        apply_board_gravity()
+        do_post_landing()
+
+
+def draw_hud_to(target_surf):
+    # Background panel
+    pygame.draw.rect(target_surf, (18, 22, 32), (0, HEIGHT, WIDTH, HUD_H))
+    pygame.draw.line(target_surf, (50, 60, 80), (0, HEIGHT), (WIDTH, HEIGHT), 2)
+    
+    # Left side: Score
+    txt_pts = font_med.render(f"PONTOS {score}", True, (255, 210, 50))
+    target_surf.blit(txt_pts, (10, HEIGHT + 12))
+    
+    # Center-Left: Super Jumps (shifted to avoid overlap with PONTOS)
+    if player and player.max_super_jumps > 0:
+        sj_color = (100, 220, 255) if player.super_jumps_left > 0 else (100, 100, 120)
+        sj_txt = font_med.render(f"SUPER {player.super_jumps_left}", True, sj_color)
+        # Position it further to the right to avoid overlapping with high scores
+        screen_center = WIDTH // 2
+        target_surf.blit(sj_txt, (screen_center - 20, HEIGHT + 12))
+        
+    # Right side: Level and Bombs
+    lvl = int(difficulty)
+    lvl_txt = font_sm.render(f"NIVEL {lvl}", True, (180, 200, 220))
+    target_surf.blit(lvl_txt, (WIDTH - lvl_txt.get_width() - 15, HEIGHT + 10))
+    
+    if player and getattr(player, "max_bombs", 0) > 0:
+        b_color = (255, 100, 100) if player.bombs_left > 0 else (120, 80, 80)
+        b_txt = font_sm.render(f"BOMBAS {player.bombs_left}", True, b_color)
+        target_surf.blit(b_txt, (WIDTH - b_txt.get_width() - 15, HEIGHT + 30))
+        
+    # Overlays for active states
+    if player and player.helmet_timer > 0:
+        h_secs = math.ceil(player.helmet_timer)
+        h_txt = font_sm.render(f"CAPACETE {h_secs}", True, (100, 255, 100))
+        target_surf.blit(h_txt, (10, HEIGHT + 32))
+        
+    if combo_count > 1:
+        combo_txt = font_sm.render(f"COMBO X{combo_count}!", True, (255, 150, 50))
+        target_surf.blit(combo_txt, (WIDTH // 2 - combo_txt.get_width() // 2, HEIGHT + 32))
 
 
 def draw_hud():
-    pygame.draw.rect(screen, (30, 35, 50), (0, HEIGHT, WIDTH, HUD_H))
-    pygame.draw.line(screen, (80, 90, 110), (0, HEIGHT), (WIDTH, HEIGHT), 2)
-    txt = font_med.render(f"Pontos: {score}", True, (255, 220, 100))
-    screen.blit(txt, (10, HEIGHT + 12))
-    if player and player.max_super_jumps > 0:
-        sj_txt = font_sm.render(f"Super: {player.super_jumps_left}/{player.max_super_jumps}", True, (100, 220, 255))
-        screen.blit(sj_txt, (WIDTH // 2 - sj_txt.get_width() // 2, HEIGHT + 15))
-    lvl = int(difficulty)
-    txt2 = font_sm.render(f"Nivel: {lvl}", True, (180, 200, 220))
-    screen.blit(txt2, (WIDTH - txt2.get_width() - 10, HEIGHT + 15))
-    if combo_count > 1:
-        combo_txt = font_sm.render(f"Combo x{combo_count}!", True, (255, 150, 50))
-        screen.blit(combo_txt, (WIDTH // 2 - combo_txt.get_width() // 2, HEIGHT + 32))
-        
-    if player and player.helmet_timer > 0:
-        p_txt = font_sm.render(f"Poder(Cabecada): {player.helmet_timer // 60}s", True, (100, 255, 100))
-        screen.blit(p_txt, (10, HEIGHT + 32))
-        
-    if player and getattr(player, "max_bombs", 0) > 0:
-        b_txt = font_sm.render(f"Bombas: {player.bombs_left}/{player.max_bombs}", True, (255, 100, 100))
-        # Place it on the right side if there's no combo or powerup occupying the exact spot
-        screen.blit(b_txt, (WIDTH - b_txt.get_width() - 10, HEIGHT + 32))
+    draw_hud_to(screen)
 
 
 def draw_crane():
@@ -1341,25 +1380,8 @@ def draw_game(flip=True):
         size = max(1, p["life"] // 8)
         pygame.draw.rect(temp_surface, p["color"], (int(p["x"]), int(p["y"]), size, size))
 
-    # HUD in temp surface - Cleaned of tofus
-    pygame.draw.rect(temp_surface, (30, 35, 50), (0, HEIGHT, WIDTH, HUD_H))
-    pygame.draw.line(temp_surface, (80, 90, 110), (0, HEIGHT), (WIDTH, HEIGHT), 2)
-    t_pts = font_med.render(f"PONTOS {score}", True, (255, 220, 100))
-    temp_surface.blit(t_pts, (10, HEIGHT + 12))
-    if player and player.max_super_jumps > 0:
-        sj_txt = font_sm.render(f"SUPER {player.super_jumps_left} DE {player.max_super_jumps}", True, (100, 220, 255))
-        temp_surface.blit(sj_txt, (WIDTH // 2 - sj_txt.get_width() // 2, HEIGHT + 15))
-    temp_surface.blit(font_sm.render(f"NIVEL {int(difficulty)}", True, (180, 200, 220)), (WIDTH - 100, HEIGHT + 15))
-    
-    if combo_count > 1:
-        c_txt = font_sm.render(f"COMBO {combo_count}", True, (255, 150, 50))
-        temp_surface.blit(c_txt, (WIDTH // 2 - c_txt.get_width() // 2, HEIGHT + 32))
-    if player and player.helmet_timer > 0:
-        h_txt = font_sm.render(f"PODER {player.helmet_timer // 60}S", True, (100, 255, 100))
-        temp_surface.blit(h_txt, (10, HEIGHT + 32))
-    if player and player.max_bombs > 0:
-        b_txt = font_sm.render(f"BOMBAS {player.bombs_left} DE {player.max_bombs}", True, (255, 100, 100))
-        temp_surface.blit(b_txt, (WIDTH - b_txt.get_width() - 10, HEIGHT + 32))
+    # Draw HUD (Calls the dedicated function for consistency)
+    draw_hud_to(temp_surface)
 
     if not player.alive:
         overlay = pygame.Surface((WIDTH, HEIGHT + HUD_H), pygame.SRCALPHA)
@@ -1864,6 +1886,7 @@ def run_game():
                     elif event.key == pygame.K_b:
                         player.try_place_bomb(board)
 
+            # --- Logic outside the event loop ---
             if player.alive:
                 keys = pygame.key.get_pressed()
                 teclas = {
@@ -1875,37 +1898,34 @@ def run_game():
                 update_crane()
                 update_particles()
 
-                if player.bomb_cooldown > 0:
-                    player.bomb_cooldown -= 1
-
-                if line_clear_flash > 0:
-                    line_clear_flash -= 1
-                if explosion_anim_timer > 0:
-                    explosion_anim_timer -= 1
-                    if explosion_anim_timer == 0:
-                        explosion_anim_cells = [] # Clear cells when timer ends
-                        apply_board_gravity()
-                        do_post_landing()
-
-                needs_gravity = False
-                for y in range(ROWS):
-                    for x in range(COLS):
-                        if board[y][x] == POWERUP_HELMET_TYPE:
-                            if helmet_timers[y][x] > 0:
-                                helmet_timers[y][x] -= 1
-                                if helmet_timers[y][x] <= 0:
-                                    board[y][x] = 0
-                                    needs_gravity = True
-                        elif board[y][x] == BOMB_TYPE:
-                            if bomb_timers[y][x] > 0:
-                                bomb_timers[y][x] -= 1
-                                if bomb_timers[y][x] <= 0:
-                                    handle_bomb(x, y)
-                if needs_gravity:
+            if line_clear_flash > 0:
+                line_clear_flash -= 1
+            if explosion_anim_timer > 0:
+                explosion_anim_timer -= 1
+                if explosion_anim_timer == 0:
+                    explosion_anim_cells = [] # Clear cells when timer ends
                     apply_board_gravity()
                     do_post_landing()
 
-                update_box_visuals()
+            needs_gravity = False
+            for y in range(ROWS):
+                for x in range(COLS):
+                    if board[y][x] == POWERUP_HELMET_TYPE:
+                        if helmet_timers[y][x] > 0:
+                            helmet_timers[y][x] -= 1
+                            if helmet_timers[y][x] <= 0:
+                                board[y][x] = 0
+                                needs_gravity = True
+                    elif board[y][x] == BOMB_TYPE:
+                        if bomb_timers[y][x] > 0:
+                            bomb_timers[y][x] -= 1
+                            if bomb_timers[y][x] <= 0:
+                                handle_bomb(x, y)
+            if needs_gravity:
+                apply_board_gravity()
+                do_post_landing()
+
+            update_box_visuals()
 
             draw_game()
             clock.tick(60)
