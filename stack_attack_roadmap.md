@@ -90,8 +90,8 @@ The original `.mmf` (Yamaha SMAF) files cannot be loaded by pygame — they cont
 - [x] **Pause menu**: Retro TV "PAUSE" overlay and ad-system monetization
 - [x] **High score system**: Persistent JSON storage, per-character records
 - [x] **Difficulty scaling refinement**: Adjusted formula for faster progression
-- [ ] **Crate spawn balance**: Ensure crates don't stack too quickly at high difficulty
-- [ ] **Visual polish**: Add screen shake on explosions, particle effects for combos
+- [x] **Crate spawn balance**: Implemented logarithmic difficulty scaling and reasonable spawn caps.
+- [x] **Visual polish**: Added screen shake on explosions/landings, and particle effects for jumps, landings, combos, and powerups.
 
 ### Code Organization
 - [ ] Consider splitting into modules: `player.py`, `board.py`, `ui.py`, `sounds.py`

@@ -22,12 +22,127 @@ screen = pygame.display.set_mode((WIDTH, HEIGHT + HUD_H))
 pygame.display.set_caption("Stack Attack")
 clock = pygame.time.Clock()
 # Use modern and arcade fonts (Impact/Arial Black for that mobile look)
+# The custom Jetpack Joyride Revived font only has glyphs for A-Z, a-z, 0-9, '.' and '$'.
+# All other special characters (!, +, ,, :, ;, -, etc.) render as tofu squares.
+# HybridFont renders each character with the correct font, using a system fallback
+# for unsupported glyphs to maintain visual consistency.
+
+# Characters that the custom font supports (verified visually)
+_CUSTOM_FONT_CHARS = set(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.$"
+)
+
+def _get_fallback_font(size):
+    """Get a system font as fallback for special characters."""
+    for name in ["Impact", "Arial Black", "Segoe UI", "Verdana"]:
+        try:
+            f = pygame.font.SysFont(name, size, bold=True)
+            if f:
+                return f
+        except Exception:
+            continue
+    return pygame.font.SysFont(None, size)
+
+
+class HybridFont:
+    """Renders text using a custom font for supported glyphs and a system
+    fallback font for special characters that would otherwise be tofu."""
+
+    def __init__(self, custom_font, fallback_font, size):
+        self.custom = custom_font
+        self.fallback = fallback_font
+        self._size = size
+        # Cache for the rendered character surfaces
+        self._char_cache = {}
+
+    def _font_for_char(self, ch):
+        """Return the correct font for a given character."""
+        if ch in _CUSTOM_FONT_CHARS or ch == ' ':
+            return self.custom
+        return self.fallback
+
+    def render(self, text, antialias, color, background=None):
+        """Render text, switching fonts per-character for unsupported glyphs."""
+        # Fast path: if all chars are supported by the custom font, use it directly
+        if all(c in _CUSTOM_FONT_CHARS or c == ' ' for c in text):
+            if background:
+                return self.custom.render(text, antialias, color, background)
+            return self.custom.render(text, antialias, color)
+
+        # Slow path: composite character by character
+        # First, measure the total width and max height
+        char_surfs = []
+        total_w = 0
+        max_h = 0
+        for ch in text:
+            font = self._font_for_char(ch)
+            if background:
+                s = font.render(ch, antialias, color, background)
+            else:
+                s = font.render(ch, antialias, color)
+            char_surfs.append(s)
+            total_w += s.get_width()
+            max_h = max(max_h, s.get_height())
+
+        # Composite onto a single surface
+        if background:
+            result = pygame.Surface((total_w, max_h))
+            result.fill(background)
+        else:
+            result = pygame.Surface((total_w, max_h), pygame.SRCALPHA)
+
+        x = 0
+        for s in char_surfs:
+            # Vertically center each character
+            y_off = max_h - s.get_height()
+            result.blit(s, (x, y_off))
+            x += s.get_width()
+
+        return result
+
+    def size(self, text):
+        """Return the (width, height) of the rendered text."""
+        if all(c in _CUSTOM_FONT_CHARS or c == ' ' for c in text):
+            return self.custom.size(text)
+        w = 0
+        h = 0
+        for ch in text:
+            font = self._font_for_char(ch)
+            cw, ch2 = font.size(ch)
+            w += cw
+            h = max(h, ch2)
+        return (w, h)
+
+    def metrics(self, text):
+        """Return per-character metrics."""
+        result = []
+        for ch in text:
+            font = self._font_for_char(ch)
+            m = font.metrics(ch)
+            result.extend(m if m else [None])
+        return result
+
+    def get_height(self):
+        return self.custom.get_height()
+
+    def get_linesize(self):
+        return self.custom.get_linesize()
+
+    def get_ascent(self):
+        return self.custom.get_ascent()
+
+    def get_descent(self):
+        return self.custom.get_descent()
+
+
 def get_best_font(size, bold=True):
     # Support for the specific font provided in assets
     custom_path = os.path.join(ASSETS, "jetpack-joyride-revived.ttf", "jetpack-joyride-revived.ttf")
     if os.path.exists(custom_path):
         try:
-            return pygame.font.Font(custom_path, size)
+            custom = pygame.font.Font(custom_path, size)
+            fallback = _get_fallback_font(size)
+            return HybridFont(custom, fallback, size)
         except Exception:
             pass
 
@@ -240,6 +355,56 @@ def unpause_music():
             pygame.mixer.music.unpause()
         except Exception:
             pass
+
+
+# Dynamic gameplay music system
+# 5 tempo levels that increase with difficulty
+GAMEPLAY_MUSIC_FILES = [
+    "gameplay_1.mid",  # 100 BPM - Relaxed
+    "gameplay_2.mid",  # 120 BPM - Getting warmer
+    "gameplay_3.mid",  # 140 BPM - Medium
+    "gameplay_4.mid",  # 165 BPM - Intense
+    "gameplay_5.mid",  # 195 BPM - Maximum chaos
+]
+# Difficulty thresholds for each music level
+MUSIC_THRESHOLDS = [1.0, 2.0, 3.5, 5.5, 8.0]
+current_music_level = 0
+gameplay_music_playing = False
+
+
+def get_music_level_for_difficulty(diff):
+    """Returns the music level (0-4) for a given difficulty value."""
+    level = 0
+    for i, threshold in enumerate(MUSIC_THRESHOLDS):
+        if diff >= threshold:
+            level = i
+    return level
+
+
+def start_gameplay_music():
+    """Start gameplay music at the appropriate tempo for current difficulty."""
+    global current_music_level, gameplay_music_playing
+    current_music_level = get_music_level_for_difficulty(difficulty)
+    play_music(GAMEPLAY_MUSIC_FILES[current_music_level], loops=-1)
+    gameplay_music_playing = True
+
+
+def update_gameplay_music():
+    """Check if difficulty warrants a tempo change and switch tracks."""
+    global current_music_level, gameplay_music_playing
+    if not gameplay_music_playing:
+        return
+    new_level = get_music_level_for_difficulty(difficulty)
+    if new_level != current_music_level:
+        current_music_level = new_level
+        play_music(GAMEPLAY_MUSIC_FILES[current_music_level], loops=-1)
+
+
+def stop_gameplay_music():
+    """Stop gameplay music tracking."""
+    global gameplay_music_playing
+    gameplay_music_playing = False
+    stop_music()
 
 
 def load_sound(filename):
@@ -607,6 +772,9 @@ class Personagem:
                         board_ref[ty][tx] = 0
                         score += 50
                         play_sound(sound_helmet)
+                        global screen_shake
+                        screen_shake = 10
+                        add_particles(self.x + self.PW/2, self.y + self.PH/2, (100, 255, 100), 20)
                         continue
                         
                     if self.vel_x > 0:
@@ -786,6 +954,9 @@ class Personagem:
                 self.helmet_timer = 5.0 # 5 seconds
                 score += 50
                 play_sound(sound_powerup)
+                global screen_shake
+                screen_shake = 10
+                add_particles(box_px + TILE_SIZE/2, box_py + TILE_SIZE/2, (100, 255, 100), 20)
                 falling_boxes_list.remove(box)
                 continue
 
@@ -817,6 +988,7 @@ class Personagem:
             # No protection and not a stomp -> Death
             self.alive = False
             stop_timers()
+            stop_gameplay_music()
             play_sound(sound_game_over_sfx)
             play_music("gameover.mid")
             # Update Highscore
@@ -905,6 +1077,7 @@ def reset_game(start_diff=1.0):
     match_anim_timer = 0
     pygame.time.set_timer(GRAVITY_EVENT, GRAVITY_MS)
     pygame.time.set_timer(SPAWN_EVENT, spawn_interval)
+    start_gameplay_music()
 
 
 def stop_timers():
@@ -976,12 +1149,13 @@ def do_post_landing():
                 
     if cleared > 0:
         score += 100 * cleared
-        difficulty = 1.0 + score / 50.0  # Increased difficulty scaling
-        spawn_interval = max(400, int(INITIAL_SPAWN_MS / difficulty)) # Higher max speed
+        # Logarithmic difficulty scaling: starts fast but slows down later
+        difficulty = 1.0 + math.log10(1 + score / 50.0) * 3.0
+        spawn_interval = max(600, int(INITIAL_SPAWN_MS / difficulty)) 
         pygame.time.set_timer(SPAWN_EVENT, spawn_interval)
         line_clear_flash = 15
         play_sound(sound_line_clear)
-        play_music("fullrow.mid")
+        update_gameplay_music()
         
         global screen_shake
         screen_shake = 15
@@ -1038,6 +1212,7 @@ def handle_bomb(bx, by):
         if in_x_range and in_y_range:
             player.alive = False
             stop_timers()
+            stop_gameplay_music()
             play_sound(sound_game_over_sfx)
             play_music("gameover.mid")
             return
@@ -1064,6 +1239,8 @@ def handle_gravity():
                 bomb_timers[by_pos][bx_pos] = 180
             falling_boxes.remove(box)
             play_sound(sound_land)
+            global screen_shake
+            screen_shake = max(screen_shake, 3)
             pgx, pgy = player.grid_x, player.grid_y
             if pgx == bx_pos and pgy == by_pos:
                 player.ativar_stun(15)
