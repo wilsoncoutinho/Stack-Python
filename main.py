@@ -598,21 +598,14 @@ class Personagem:
         if not (0 <= dst_x < COLS):
             return False
             
-        # Can't push if destination is occupied
-        if board_ref[box_y][dst_x] != 0:
+        # Can't push if destination is occupied (check static, falling, and pushing crates)
+        if is_cell_occupied(dst_x, box_y):
             return False
             
         # Can't push if there's a crate on top of this one
         if box_y > 0 and board_ref[box_y - 1][box_x] != 0:
             return False
             
-        # Prevent pushing if there is a falling box currently crossing that tile
-        for b in falling_boxes:
-            if b["x"] == dst_x:
-                ty0 = int(b["py"] // TILE_SIZE)
-                ty1 = int((b["py"] + TILE_SIZE - 1) // TILE_SIZE)
-                if ty0 <= box_y <= ty1:
-                    return False
         return True
 
     def atualizar(self, teclas, board_ref):
@@ -816,6 +809,27 @@ class Personagem:
                 self.vel_x = 0
                 return
 
+        # Check boxes in push animations horizontally
+        for anim in push_animations:
+            tile_r = pygame.Rect(anim["px"], anim["py"], TILE_SIZE, TILE_SIZE)
+            if not r.colliderect(tile_r):
+                continue
+            overlap_h = min(r.bottom, tile_r.bottom) - max(r.top, tile_r.top)
+            if overlap_h > 0:
+                if self.vel_x > 0:
+                    self.x = float(tile_r.left - self.PW)
+                elif self.vel_x < 0:
+                    self.x = float(tile_r.right)
+                else:
+                    d_left = r.right - tile_r.left
+                    d_right = tile_r.right - r.left
+                    if d_left < d_right:
+                        self.x = float(tile_r.left - self.PW)
+                    else:
+                        self.x = float(tile_r.right)
+                self.vel_x = 0
+                return
+
     def _resolver_vertical(self, board_ref):
         global score
         self.no_chao = False
@@ -837,7 +851,6 @@ class Personagem:
                     score += 50
                     play_sound(sound_helmet)
                     continue
-                    
                 if self.vel_y > 0:
                     self.y = float(tile_r.top - self.PH)
                     self.vel_y = 0
@@ -846,6 +859,20 @@ class Personagem:
                     self.y = float(tile_r.bottom)
                     self.vel_y = 0
                 return
+
+        # Check boxes in push animations vertically
+        for anim in push_animations:
+            tile_r = pygame.Rect(anim["px"], anim["py"], TILE_SIZE, TILE_SIZE)
+            if not r.colliderect(tile_r):
+                continue
+            if self.vel_y > 0:
+                self.y = float(tile_r.top - self.PH)
+                self.vel_y = 0
+                self.no_chao = True
+            elif self.vel_y < 0:
+                self.y = float(tile_r.bottom)
+                self.vel_y = 0
+            return
 
         floor_y = ROWS * TILE_SIZE
         if self.y + self.PH >= floor_y:
@@ -1118,6 +1145,23 @@ def find_line_matches():
     return matched
 
 
+def is_cell_occupied(x, y):
+    """Check if a grid cell is occupied by a static crate, falling crate, or push animation."""
+    if not (0 <= x < COLS and 0 <= y < ROWS):
+        return True
+    if board[y][x] != 0:
+        return True
+    # Check falling boxes (by grid coordinates)
+    for fb in falling_boxes:
+        if fb["x"] == x and fb["y"] == y:
+            return True
+    # Check push animations (by target grid coordinates)
+    for pa in push_animations:
+        if pa["x"] == x and pa["y"] == y:
+            return True
+    return False
+
+
 def apply_board_gravity():
     for x in range(COLS):
         write_y = ROWS - 1
@@ -1227,8 +1271,16 @@ def handle_gravity():
         landed = False
         if box["y"] == ROWS - 1:
             landed = True
-        elif box["y"] + 1 < ROWS and board[box["y"] + 1][box["x"]] != 0:
-            landed = True
+        elif box["y"] + 1 < ROWS:
+            # Check if board below is occupied
+            if board[box["y"] + 1][box["x"]] != 0:
+                landed = True
+            else:
+                # Also check if a push animation is targeting the space below
+                for pa in push_animations:
+                    if pa["x"] == box["x"] and pa["y"] == box["y"] + 1:
+                        landed = True
+                        break
 
         if landed:
             bx_pos, by_pos, btype = box["x"], box["y"], box["type"]
@@ -1316,15 +1368,21 @@ def update_crane():
             )
             
             if crossed:
+                drop_x = c["drop_x"]
                 drop_row = max(0, CRANE_SPRITE_H // TILE_SIZE)
-                falling_boxes.append({
-                    "x": c["drop_x"],
-                    "y": drop_row,
-                    "type": c["type"],
-                    "px": float(c["drop_x"] * TILE_SIZE),
-                    "py": float(CRANE_SPRITE_H),
-                })
-                c["dropped"] = True
+                
+                # Robust check: only drop if the target cell is completely clear
+                if not is_cell_occupied(drop_x, drop_row):
+                    falling_boxes.append({
+                        "x": drop_x,
+                        "y": drop_row,
+                        "type": c["type"],
+                        "px": float(drop_x * TILE_SIZE),
+                        "py": float(CRANE_SPRITE_H),
+                    })
+                    c["dropped"] = True
+                # If blocked, the crane will just keep moving and try again next tick
+                # or exit the screen if it passes the drop point.
                 
         if c["vx"] > 0 and c["x"] > WIDTH + CRANE_SPRITE_W:
             cranes.remove(c)
@@ -1379,13 +1437,17 @@ def update_box_visuals():
 
     global combo_count
     for anim in completed_pushes:
-        board[anim["y"]][anim["x"]] = anim["type"]
-        if anim["type"] == POWERUP_HELMET_TYPE:
-            helmet_timers[anim["y"]][anim["x"]] = anim.get("helmet_timer", 180)
+        tx, ty = anim["x"], anim["y"]
+        # If the destination was filled while we were sliding, stack on top
+        while ty >= 0 and board[ty][tx] != 0:
+            ty -= 1
         
-        if anim["type"] == BOMB_TYPE:
-            # Transfer the fuse timer to the new location
-            bomb_timers[anim["y"]][anim["x"]] = anim.get("bomb_timer", 180)
+        if ty >= 0:
+            board[ty][tx] = anim["type"]
+            if anim["type"] == POWERUP_HELMET_TYPE:
+                helmet_timers[ty][tx] = anim.get("helmet_timer", 180)
+            if anim["type"] == BOMB_TYPE:
+                bomb_timers[ty][tx] = anim.get("bomb_timer", 180)
         
         combo_count = 0
         apply_board_gravity()
