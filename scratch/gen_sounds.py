@@ -67,33 +67,38 @@ def sine_wave(freq, t):
 
 
 def gen_jump():
-    """Short ascending chirp - classic platformer jump sound."""
-    duration = 0.15
+    """Soft ascending chirp — gentle sine sweep with smooth fade."""
+    duration = 0.12
     samples = []
     n = int(SAMPLE_RATE * duration)
     for i in range(n):
         t = i / SAMPLE_RATE
         progress = t / duration
-        freq = 200 + 600 * progress  # sweep up from 200 to 800 Hz
-        amp = 0.6 * (1.0 - progress * 0.7)  # fade out
-        s = square_wave(freq, t) * amp * 0.5 + sine_wave(freq * 2, t) * amp * 0.3
+        freq = 350 + 450 * (progress ** 0.7)  # smooth curve up
+        # Smooth envelope: fade in briefly, then fade out
+        env = math.sin(progress * math.pi)  # bell-shaped
+        amp = 0.35 * env
+        s = (sine_wave(freq, t) * 0.7 +
+             triangle_wave(freq * 1.5, t) * 0.2 +
+             sine_wave(freq * 2, t) * 0.1) * amp
         samples.append(s)
     return samples
 
 
 def gen_super_jump():
-    """Higher-pitched ascending chirp with harmonic overtone."""
-    duration = 0.2
+    """Higher-pitched soft ascending sweep with shimmer."""
+    duration = 0.18
     samples = []
     n = int(SAMPLE_RATE * duration)
     for i in range(n):
         t = i / SAMPLE_RATE
         progress = t / duration
-        freq = 300 + 1000 * progress  # sweep up higher
-        amp = 0.65 * (1.0 - progress * 0.6)
-        s = (square_wave(freq, t) * 0.4 + 
-             sine_wave(freq * 1.5, t) * 0.3 +
-             triangle_wave(freq * 2, t) * 0.2) * amp
+        freq = 500 + 700 * (progress ** 0.6)  # smooth sweep up
+        env = math.sin(progress * math.pi) * (1.0 - progress * 0.3)
+        amp = 0.4 * env
+        s = (sine_wave(freq, t) * 0.5 +
+             triangle_wave(freq * 1.5, t) * 0.3 +
+             sine_wave(freq * 3, t) * 0.08) * amp
         samples.append(s)
     return samples
 

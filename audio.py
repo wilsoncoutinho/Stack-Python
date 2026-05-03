@@ -1,0 +1,142 @@
+"""
+Stack Attack Reborn — Audio System
+
+Music playback, dynamic tempo system, and sound effect helpers.
+"""
+import os
+import pygame
+from constants import (
+    ASSETS, GAMEPLAY_MUSIC_FILES, MUSIC_THRESHOLDS,
+)
+import state
+
+# ---------------------------------------------------------------------------
+# Mixer state
+# ---------------------------------------------------------------------------
+try:
+    pygame.mixer.init(frequency=22050, size=-16, channels=2, buffer=512)
+    SOUND_OK = True
+except Exception:
+    SOUND_OK = False
+
+current_music_level = 0
+gameplay_music_playing = False
+
+
+# ---------------------------------------------------------------------------
+# Music helpers
+# ---------------------------------------------------------------------------
+def play_music(name, loops=0):
+    if not SOUND_OK:
+        return
+    path = os.path.join(ASSETS, name)
+    if os.path.exists(path):
+        try:
+            pygame.mixer.music.load(path)
+            pygame.mixer.music.play(loops)
+        except Exception:
+            pass
+
+
+def stop_music():
+    if SOUND_OK:
+        try:
+            pygame.mixer.music.stop()
+        except Exception:
+            pass
+
+
+def pause_music():
+    if SOUND_OK:
+        try:
+            pygame.mixer.music.pause()
+        except Exception:
+            pass
+
+
+def unpause_music():
+    if SOUND_OK:
+        try:
+            pygame.mixer.music.unpause()
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Dynamic gameplay music
+# ---------------------------------------------------------------------------
+def get_music_level_for_difficulty(diff):
+    """Returns the music level (0-4) for a given difficulty value."""
+    level = 0
+    for i, threshold in enumerate(MUSIC_THRESHOLDS):
+        if diff >= threshold:
+            level = i
+    return level
+
+
+def start_gameplay_music():
+    """Start gameplay music at the appropriate tempo for current difficulty."""
+    global current_music_level, gameplay_music_playing
+    current_music_level = get_music_level_for_difficulty(state.difficulty)
+    play_music(GAMEPLAY_MUSIC_FILES[current_music_level], loops=-1)
+    gameplay_music_playing = True
+
+
+def update_gameplay_music():
+    """Check if difficulty warrants a tempo change and switch tracks."""
+    global current_music_level, gameplay_music_playing
+    if not gameplay_music_playing:
+        return
+    new_level = get_music_level_for_difficulty(state.difficulty)
+    if new_level != current_music_level:
+        current_music_level = new_level
+        play_music(GAMEPLAY_MUSIC_FILES[current_music_level], loops=-1)
+
+
+def stop_gameplay_music():
+    """Stop gameplay music tracking."""
+    global gameplay_music_playing
+    gameplay_music_playing = False
+    stop_music()
+
+
+# ---------------------------------------------------------------------------
+# Sound effects
+# ---------------------------------------------------------------------------
+def load_sound(filename):
+    """Load a sound effect and return the Sound object."""
+    if not SOUND_OK:
+        return None
+    path = os.path.join(ASSETS, filename)
+    if os.path.exists(path):
+        try:
+            return pygame.mixer.Sound(path)
+        except Exception:
+            pass
+    return None
+
+
+def play_sound(sound):
+    """Play a sound effect if it's loaded."""
+    if sound and SOUND_OK:
+        try:
+            sound.play()
+        except Exception:
+            pass
+
+
+# Pre-loaded sound effects
+sound_jump = load_sound("sounds/jump.wav")
+sound_super_jump = load_sound("sounds/super_jump.wav")
+sound_push = load_sound("sounds/push.wav")
+sound_land = load_sound("sounds/land.wav")
+sound_explode = load_sound("sounds/explode.wav")
+sound_powerup = load_sound("sounds/powerup.wav")
+sound_bomb = load_sound("sounds/bomb.wav")
+sound_stun = load_sound("sounds/stun.wav")
+sound_combo = load_sound("sounds/combo.wav")
+sound_line_clear = load_sound("sounds/line_clear.wav")
+sound_game_over_sfx = load_sound("sounds/game_over.wav")
+sound_menu_move = load_sound("sounds/menu_move.wav")
+sound_menu_select = load_sound("sounds/menu_select.wav")
+sound_helmet = load_sound("sounds/helmet.wav")
