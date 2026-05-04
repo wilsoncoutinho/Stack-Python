@@ -59,7 +59,8 @@ PUSH_RIGHT_FRAMES = [12, 13, 14]
 PUSH_LEFT_FRAMES = [15, 16, 17]
 JUMP_RIGHT_FRAME = 18
 JUMP_LEFT_FRAME = 19
-STUN_FRAME = 20
+STUN_FRAMES = [21, 22, 23, 24, 25, 26]
+STUN_FRAME = 20 # Keep for single-frame references if any
 
 # ---------------------------------------------------------------------------
 # Physics & Gameplay Tuning
@@ -97,8 +98,8 @@ CHAR_DEFS = [
      "speed": 4.0, "jump": -9.5, "super_jumps": 0, "bombs": 0, "ability": "high_jump",
      "desc": "Pulo Alto. Alcanca a altura de 2 caixas empilhadas."},
     {"id": "cath", "name": "Crate-Crazy Cath", "sprite": "woman2.png", "icon": "icwoman2.png",
-     "speed": 4.0, "jump": -7.5, "super_jumps": 0, "bombs": 0, "ability": "stomp",
-     "desc": "Pisao. Ganha 25 pontos ao pisar e quebrar caixas (o normal e 10)."},
+     "speed": 4.0, "jump": -7.5, "super_jumps": 0, "bombs": 0, "ability": "Cabeçada",
+     "desc": "Cabeçada. Destroi caixas por baixo (3 usos). Recarrega com combos ou itens."},
     {"id": "sam", "name": "Super-Stacker Sam", "sprite": "man4.png", "icon": "iconman4.png",
      "speed": 3.0, "jump": -7.0, "super_jumps": 0, "bombs": 3, "ability": "bombs",
      "desc": "Demolidor. Tem bombas com raio 2 e recupera 1 ao combinar 3 cores."}

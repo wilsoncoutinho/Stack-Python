@@ -52,7 +52,7 @@ def draw_hud_to(target_surf):
             "speed": ("VELOZ", (100, 220, 255)),
             "double_push": ("MAIS FORTE", (255, 180, 80)),
             "high_jump": ("PULO ALTO", (120, 255, 120)),
-            "stomp": ("PISÃO", (255, 100, 100)),
+            "stomp": ("CABEÇADA", (255, 100, 100)),
             "bombs": ("DEMOLIDOR", (255, 50, 50))
         }
         ab_name, ab_color = ability_labels.get(ability, ("???", (255, 255, 255)))
@@ -74,9 +74,22 @@ def draw_hud_to(target_surf):
     target_surf.blit(lvl_txt, (WIDTH - lvl_txt.get_width() - 10, HEIGHT + (HUD_H - lvl_txt.get_height()) // 2))
     
     if state.player and getattr(state.player, "max_bombs", 0) > 0:
-        b_color = (255, 100, 100) if state.player.bombs_left > 0 else (120, 80, 80)
-        b_txt = font_sm.render(f"BOMBAS {state.player.bombs_left}", True, b_color)
-        target_surf.blit(b_txt, (WIDTH - b_txt.get_width() - 15, HEIGHT + 30))
+        # Sam's Bombs Icon
+        bomb_icon = crate_sprite_for_type(BOMB_TYPE)
+        icon_small = pygame.transform.scale(bomb_icon, (26, 26))
+        target_surf.blit(icon_small, (WIDTH - 100, HEIGHT + 28))
+        b_color = (255, 120, 120) if state.player.bombs_left > 0 else (120, 80, 80)
+        b_txt = font_sm.render(f"X{state.player.bombs_left}", True, b_color)
+        target_surf.blit(b_txt, (WIDTH - 70, HEIGHT + 30))
+        
+    if state.player and getattr(state.player, "helmet_charges", 0) > 0:
+        # Cath's Helmet Icon
+        helmet_icon = crate_sprite_for_type(POWERUP_HELMET_TYPE)
+        icon_small = pygame.transform.scale(helmet_icon, (26, 26))
+        target_surf.blit(icon_small, (WIDTH - 100, HEIGHT + 28))
+        c_color = (120, 255, 120)
+        c_txt = font_sm.render(f"X{state.player.helmet_charges}", True, c_color)
+        target_surf.blit(c_txt, (WIDTH - 70, HEIGHT + 30))
         
     # Overlays
     if state.player and state.player.helmet_timer > 0:
@@ -235,7 +248,10 @@ def draw_retro_tv(content_type="pause", timer=0):
             pygame.draw.rect(_screen, (c, c, c), (nx, ny, 4, 4))
         if (pygame.time.get_ticks() // 500) % 2 == 0:
             p_txt = font_big.render("PAUSE", True, (0, 255, 0))
-            _screen.blit(p_txt, (screen_x + screen_w // 2 - p_txt.get_width() // 2, screen_y + screen_h // 2 - 20))
+            _screen.blit(p_txt, (screen_x + screen_w // 2 - p_txt.get_width() // 2, screen_y + screen_h // 2 - 30))
+            
+            s_txt = font_sm.render("PRESSIONE 'Q' OU 'SELECT' PARA SAIR", True, (180, 190, 200))
+            _screen.blit(s_txt, (screen_x + screen_w // 2 - s_txt.get_width() // 2, screen_y + screen_h // 2 + 30))
     elif content_type == "ad":
         pygame.draw.rect(_screen, (240, 235, 210), (screen_x, screen_y, screen_w, screen_h), border_radius=5)
         ad_title = font_med.render("CRATE COLA", True, (200, 30, 30))
@@ -330,7 +346,7 @@ def draw_mobile_controls():
     pygame.draw.rect(_screen, st_color, (se_x - st_w//2, se_y - st_h//2, st_w, st_h), border_radius=7)
     
     # Labels for Start/Select
-    lbl_sel = font_xs.render("SELECT", True, (140, 145, 140))
+    lbl_sel = font_xs.render("SAIR", True, (140, 145, 140))
     lbl_st = font_xs.render("START", True, (140, 145, 140))
     _screen.blit(lbl_sel, (se_x - lbl_sel.get_width()//2, se_y - 20))
     _screen.blit(lbl_st, (st_x - lbl_st.get_width()//2, st_y - 20))
@@ -441,7 +457,7 @@ def draw_char_select():
             "speed": ("VELOZ", (100, 220, 255)),
             "double_push": ("MAIS FORTE", (255, 180, 80)),
             "high_jump": ("PULO ALTO", (120, 255, 120)),
-            "stomp": ("PISÃO", (255, 100, 100)),
+            "stomp": ("CABEÇADA", (255, 100, 100)),
             "bombs": ("DEMOLIDOR", (255, 50, 50))
         }
         

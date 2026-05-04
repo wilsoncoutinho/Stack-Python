@@ -47,7 +47,7 @@ def get_touch_key(x, y):
     if math.hypot(x - (WIDTH - 55), y - (ctrl_y + 75)) < 35: return pygame.K_SPACE
     if math.hypot(x - (WIDTH - 135), y - (ctrl_y + 115)) < 35: return pygame.K_b
     if abs(x - (WIDTH // 2 + 30)) < 30 and abs(y - (ctrl_y + 160)) < 20: return pygame.K_RETURN
-    if abs(x - (WIDTH // 2 - 30)) < 30 and abs(y - (ctrl_y + 160)) < 20: return pygame.K_ESCAPE
+    if abs(x - (WIDTH // 2 - 30)) < 30 and abs(y - (ctrl_y + 160)) < 20: return pygame.K_q # Q for Back to Menu
     return None
 
 
@@ -161,13 +161,16 @@ def run_game():
                 if not state.player.alive:
                     if event.type == pygame.KEYDOWN:
                         if event.key == pygame.K_r: reset_game(state.selected_level)
-                        elif event.key == pygame.K_q: pygame.quit(); sys.exit()
+                        elif event.key == pygame.K_q: 
+                            state.game_state = "title"
+                            play_music("title.mid", loops=-1)
                     continue
 
                 if event.type == SPAWN_EVENT:
                     x = random.randint(0, COLS - 1)
                     r = random.random()
-                    ctype = BOMB_TYPE if r < 0.06 else (POWERUP_HELMET_TYPE if r < 0.10 else random.randint(1, NUM_CRATE_TYPES))
+                    # Bomb: 6%, Helmet: 2% (from 0.06 to 0.08)
+                    ctype = BOMB_TYPE if r < 0.06 else (POWERUP_HELMET_TYPE if r < 0.08 else random.randint(1, NUM_CRATE_TYPES))
                     queue_crate_spawn(x, ctype)
                 if event.type == GRAVITY_EVENT: handle_gravity()
                 if event.type == pygame.KEYDOWN:
@@ -216,6 +219,10 @@ def run_game():
                         play_sound(sound_menu_select)
                         state.game_state = "ad"
                         ad_timer = 180
+                    elif event.key == pygame.K_q: # Back to Menu from Pause
+                        play_sound(sound_menu_move)
+                        state.game_state = "title"
+                        play_music("title.mid", loops=-1)
             clock.tick(60)
 
         elif state.game_state == "ad":

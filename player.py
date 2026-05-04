@@ -8,7 +8,7 @@ from constants import (
     TILE_SIZE, COLS, ROWS, WIDTH,
     IDLE_FRAMES, WALK_RIGHT_FRAMES, WALK_LEFT_FRAMES,
     PUSH_RIGHT_FRAMES, PUSH_LEFT_FRAMES,
-    JUMP_RIGHT_FRAME, JUMP_LEFT_FRAME, STUN_FRAME,
+    JUMP_RIGHT_FRAME, JUMP_LEFT_FRAME, STUN_FRAME, STUN_FRAMES,
     JUMP_BUFFER_FRAMES, COYOTE_FRAMES, PUSH_HORIZONTAL_SPEED,
     CHAR_DEFS, BOMB_TYPE, POWERUP_HELMET_TYPE,
 )
@@ -50,9 +50,12 @@ class Personagem:
         self.jump_queued = False
         self.jump_buffer = 0
         self.coyote_timer = 0
+        self.stun_timer = 0
         self.push_cooldown = 0
         self.bomb_cooldown = 0
         self.helmet_timer = 0
+        self.helmet_charges = 3 if self.char_id == "cath" else 0
+        self.max_helmet_charges = 5
         self.has_double_jumped = False
         self.sprites = char_sprites[char_id]
         self.num_frames = len(self.sprites)
@@ -139,6 +142,14 @@ class Personagem:
         if not self.alive:
             return
 
+        if self.stun_timer > 0:
+            self.stun_timer -= 1
+            self.estado = "stun"
+            self.vel_x = 0
+            self._atualizar_anim() # Update animation frames during stun
+            self._aplicar_fisica(board_ref)
+            return
+
 
 
         if self.no_chao:
@@ -190,17 +201,38 @@ class Personagem:
                 pushed = False
                 if ptype == "board":
                     bx, by = prox[1], prox[2]
-                    if self._pode_empurrar_para(board_ref, bx, by):
+                    
+                    # Helmet collection from the side
+                    if board_ref[by][bx] == POWERUP_HELMET_TYPE:
+                        # Cath doesn't get the timer, only charges
+                        if self.char_id == "cath":
+                            self.helmet_charges = min(self.max_helmet_charges, self.helmet_charges + 1)
+                        else:
+                            duration = 10.0 if self.char_id == "sam" else 5.0
+                            self.helmet_timer += duration
+                        board_ref[by][bx] = 0
+                        state.score += 50
+                        play_sound(sound_helmet)
+                        state.screen_shake = 10
+                        add_particles(self.x + self.PW / 2, self.y + self.PH / 2, (100, 255, 100), 20)
+                        pushed = False
+                        wants_to_push = False # Convert to normal movement since crate is gone
+                    
+                    if wants_to_push:
+                        can_push_single = self._pode_empurrar_para(board_ref, bx, by)
+                        
                         # Frank's Passive: Chain Push (push up to 2 boxes)
-                        if self.char_id == "frank":
-                            nnx = bx + self.dir
-                            if 0 <= nnx < COLS and board_ref[by][nnx] != 0:
-                                if self._pode_empurrar_para(board_ref, nnx, by):
-                                    self._empurrar_caixa(board_ref, nnx, by, nnx + self.dir)
-                                    self._empurrar_caixa(board_ref, bx, by, nnx)
+                        if not can_push_single and self.char_id == "frank":
+                            nx2 = bx + self.dir
+                            if 0 <= nx2 < COLS and board_ref[by][nx2] != 0:
+                                # If blocked by exactly ONE box, check if THAT box can move
+                                if self._pode_empurrar_para(board_ref, nx2, by):
+                                    self._empurrar_caixa(board_ref, nx2, by, nx2 + self.dir)
+                                    self._empurrar_caixa(board_ref, bx, by, nx2)
                                     self.push_cooldown = 24
                                     pushed = True
-                        if not pushed:
+                                    
+                        if not pushed and can_push_single:
                             self._empurrar_caixa(board_ref, bx, by, bx + self.dir)
                             self.push_cooldown = 20
                             pushed = True
@@ -280,7 +312,8 @@ class Personagem:
                     if not r.colliderect(tile_r):
                         continue
                     if board_ref[ty][tx] == POWERUP_HELMET_TYPE:
-                        self.helmet_timer = 5.0
+                        duration = 10.0 if self.char_id == "sam" else 5.0
+                        self.helmet_timer += duration
                         board_ref[ty][tx] = 0
                         state.score += 50
                         play_sound(sound_helmet)
@@ -361,7 +394,11 @@ class Personagem:
                 if not r.colliderect(tile_r):
                     continue
                 if board_ref[ty][tx] == POWERUP_HELMET_TYPE:
-                    self.helmet_timer = 5.0
+                    if self.char_id == "cath":
+                        self.helmet_charges = min(self.max_helmet_charges, self.helmet_charges + 1)
+                    else:
+                        duration = 10.0 if self.char_id == "sam" else 5.0
+                        self.helmet_timer += duration
                     board_ref[ty][tx] = 0
                     state.score += 50
                     play_sound(sound_helmet)
@@ -371,8 +408,24 @@ class Personagem:
                     self.vel_y = 0
                     self.no_chao = True
                 elif self.vel_y < 0:
-                    self.y = float(tile_r.bottom)
-                    self.vel_y = 0
+                    # Headbutt Logic (Helmet timer OR Cath's Passive Charges)
+                    can_headbutt = self.helmet_timer > 0 or (self.char_id == "cath" and self.helmet_charges > 0)
+                    if can_headbutt:
+                        # Destroy crate from below
+                        board_ref[ty][tx] = 0
+                        play_sound(sound_explode)
+                        add_particles(tile_r.centerx, tile_r.centery, (200, 200, 200), 12)
+                        
+                        # Consume charge if not using a timed powerup
+                        if self.char_id == "cath" and self.helmet_timer <= 0:
+                            self.helmet_charges -= 1
+                        
+                        # Maintain upward momentum (original arcade feel)
+                        self.vel_y *= 0.5 
+                        continue
+                    else:
+                        self.y = float(tile_r.bottom)
+                        self.vel_y = 0
                 return
 
         # Check boxes in push animations vertically
@@ -426,6 +479,8 @@ class Personagem:
             tick_rate = walk_rate
         elif self.estado == "pulando":
             tick_rate = 999
+        elif self.estado == "stun":
+            tick_rate = 8 # Animation speed for dizzy effect
         else:
             tick_rate = 10
 
@@ -435,6 +490,8 @@ class Personagem:
                 self.frame = (self.frame + 1) % len(WALK_RIGHT_FRAMES)
             elif self.estado == "empurrando":
                 self.frame = (self.frame + 1) % len(PUSH_RIGHT_FRAMES)
+            elif self.estado == "stun":
+                self.frame = (self.frame + 1) % len(STUN_FRAMES)
             elif self.estado == "parado":
                 self.frame = (self.frame + 1) % len(IDLE_FRAMES)
 
@@ -446,7 +503,8 @@ class Personagem:
             idx = JUMP_RIGHT_FRAME if self.dir == 1 else JUMP_LEFT_FRAME
             return self.sprites[min(idx, self.num_frames - 1)]
         if self.estado == "stun":
-            return self.sprites[min(STUN_FRAME, self.num_frames - 1)]
+            idx = STUN_FRAMES[self.frame % len(STUN_FRAMES)]
+            return self.sprites[min(idx, self.num_frames - 1)]
         if self.estado == "empurrando":
             frames = PUSH_RIGHT_FRAMES if self.dir == 1 else PUSH_LEFT_FRAMES
             idx = frames[self.frame % len(frames)]
@@ -478,8 +536,12 @@ class Personagem:
                 continue
 
             if box["type"] == POWERUP_HELMET_TYPE:
-                # Sam's Passive: Helmet lasts twice as long
-                self.helmet_timer = 10.0 if self.char_id == "sam" else 5.0
+                if self.char_id == "cath":
+                    self.helmet_charges = min(self.max_helmet_charges, self.helmet_charges + 1)
+                else:
+                    # Sam's Passive: Helmet lasts twice as long
+                    duration = 10.0 if self.char_id == "sam" else 5.0
+                    self.helmet_timer += duration
                 state.score += 50
                 play_sound(sound_powerup)
                 state.screen_shake = 10
@@ -500,13 +562,37 @@ class Personagem:
                 self.vel_y = min(self.vel_y, -4)
                 continue
 
+            # Cath's Headbutt for falling boxes
+            if self.char_id == "cath" and self.helmet_charges > 0 and self.vel_y < 0:
+                # Collision check for head hitting the falling box
+                head_r = pygame.Rect(self.x + 4, self.y, self.PW - 8, 10)
+                box_r = pygame.Rect(box_px, box_py, TILE_SIZE, TILE_SIZE)
+                if head_r.colliderect(box_r):
+                    falling_boxes_list.remove(box)
+                    self.helmet_charges -= 1
+                    play_sound(sound_explode)
+                    add_particles(box_px + TILE_SIZE / 2, box_py + TILE_SIZE / 2, (220, 220, 220), 12)
+                    self.vel_y = 2 # Bounce down slightly to avoid instant second collision
+                    continue
+
             if self.helmet_timer > 0:
+                # Original mechanic: Don't explode, just stun and the box lands
+                self.stun_timer = 120 # 2 seconds stun as requested
+                self.estado = "stun"
+                self.frame = 0 # Start animation from beginning
+                play_sound(sound_stun)
+                
+                # Remove from falling and place on board at current grid
                 falling_boxes_list.remove(box)
-                state.score += 10
-                play_sound(sound_explode)
-                if self.vel_y < 0:
-                    self.vel_y = 2
-                state.floating_explosions.append({"px": box_px, "py": box_py, "timer": 20})
+                gx, gy = box["x"], int(box["py"] // TILE_SIZE)
+                gy = max(0, min(ROWS - 1, gy))
+                
+                if state.board[gy][gx] == 0:
+                    state.board[gy][gx] = box["type"]
+                
+                from board import apply_board_gravity, do_post_landing
+                apply_board_gravity()
+                do_post_landing()
                 continue
 
             # Death

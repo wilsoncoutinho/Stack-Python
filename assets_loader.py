@@ -213,8 +213,15 @@ title_img = pygame.transform.scale(load_img("extracted/title.png"), (WIDTH, HEIG
 crate_sprites = slice_sheet(load_img("extracted/crates.png"), 8, 8, TILE_SIZE / 8, count=14)
 
 try:
-    trophy_icon = pygame.image.load(os.path.join(ASSETS, "trophy.png")).convert()
-    trophy_icon.set_colorkey((255, 255, 255))
+    # Use convert_alpha() and aggressively remove white background
+    trophy_icon = pygame.image.load(os.path.join(ASSETS, "trophy.png")).convert_alpha()
+    # Loop and clear white pixels (robust background removal)
+    for x in range(trophy_icon.get_width()):
+        for y in range(trophy_icon.get_height()):
+            color = trophy_icon.get_at((x, y))
+            # If pixel is white or very close to white, make it transparent
+            if color.r > 240 and color.g > 240 and color.b > 240:
+                trophy_icon.set_at((x, y), (0, 0, 0, 0))
     trophy_icon = pygame.transform.scale(trophy_icon, (24, 24))
 except Exception:
     trophy_icon = pygame.Surface((24, 24), pygame.SRCALPHA)

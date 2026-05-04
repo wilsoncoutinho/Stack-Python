@@ -10,14 +10,36 @@ from constants import (
 )
 import state
 
+import io
+
 # ---------------------------------------------------------------------------
 # Mixer state
 # ---------------------------------------------------------------------------
 try:
-    pygame.mixer.init(frequency=22050, size=-16, channels=2, buffer=512)
+    pygame.mixer.init(frequency=22050, size=-16, channels=2, buffer=1024)
     SOUND_OK = True
 except Exception:
     SOUND_OK = False
+
+# Music memory cache to prevent disk-load stutter
+_music_data = {}
+
+def pre_load_music_assets():
+    """Load all MIDI files into memory at startup."""
+    if not SOUND_OK:
+        return
+    tracks = GAMEPLAY_MUSIC_FILES + ["title.mid", "gameover.mid"]
+    for name in tracks:
+        path = os.path.join(ASSETS, name)
+        if os.path.exists(path):
+            try:
+                with open(path, "rb") as f:
+                    _music_data[name] = f.read()
+            except Exception:
+                pass
+
+# Run pre-load immediately
+pre_load_music_assets()
 
 current_music_level = 0
 gameplay_music_playing = False
@@ -29,13 +51,21 @@ gameplay_music_playing = False
 def play_music(name, loops=0):
     if not SOUND_OK:
         return
-    path = os.path.join(ASSETS, name)
-    if os.path.exists(path):
-        try:
-            pygame.mixer.music.load(path)
+    
+    try:
+        if name in _music_data:
+            # Load from memory buffer (BytesIO) to avoid I/O blocking
+            mem_file = io.BytesIO(_music_data[name])
+            pygame.mixer.music.load(mem_file)
             pygame.mixer.music.play(loops)
-        except Exception:
-            pass
+        else:
+            # Fallback to disk
+            path = os.path.join(ASSETS, name)
+            if os.path.exists(path):
+                pygame.mixer.music.load(path)
+                pygame.mixer.music.play(loops)
+    except Exception:
+        pass
 
 
 def stop_music():
@@ -90,6 +120,11 @@ def update_gameplay_music():
     new_level = get_music_level_for_difficulty(state.difficulty)
     if new_level != current_music_level:
         current_music_level = new_level
+        # Use a short fadeout to make the transition more fluid and avoid pops/stutter
+        if pygame.mixer.music.get_busy():
+            pygame.mixer.music.fadeout(500)
+            # We can't easily wait for fadeout completion without blocking, 
+            # so we just load and play which will interrupt the fade anyway but smoother
         play_music(GAMEPLAY_MUSIC_FILES[current_music_level], loops=-1)
 
 

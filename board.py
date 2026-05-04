@@ -132,6 +132,11 @@ def do_post_landing():
         if state.player and state.player.char_id == "sam":
             if state.player.bombs_left < 3:
                 state.player.bombs_left += 1
+        
+        # Passive: Cath restores 1 helmet charge when completing colors
+        if state.player and state.player.char_id == "cath":
+            if getattr(state.player, "helmet_charges", 0) < state.player.max_helmet_charges:
+                state.player.helmet_charges += 1
 
     if to_explode:
         state.explosion_anim_cells = list(to_explode)
