@@ -14,35 +14,16 @@ os.makedirs(OUTPUT, exist_ok=True)
 SAMPLE_RATE = 22050
 
 
-def write_wav(filename, samples, sample_rate=SAMPLE_RATE):
-    """Write samples (list of floats -1.0 to 1.0) to a 16-bit mono WAV file."""
+import soundfile as sf
+
+def write_ogg(filename, samples, sample_rate=SAMPLE_RATE):
+    """Write samples to an OGG file using soundfile."""
     path = os.path.join(OUTPUT, filename)
-    num_samples = len(samples)
-    data_size = num_samples * 2
-    
-    with open(path, 'wb') as f:
-        # RIFF header
-        f.write(b'RIFF')
-        f.write(struct.pack('<I', 36 + data_size))
-        f.write(b'WAVE')
-        # fmt chunk
-        f.write(b'fmt ')
-        f.write(struct.pack('<I', 16))       # chunk size
-        f.write(struct.pack('<H', 1))        # PCM
-        f.write(struct.pack('<H', 1))        # mono
-        f.write(struct.pack('<I', sample_rate))
-        f.write(struct.pack('<I', sample_rate * 2))  # byte rate
-        f.write(struct.pack('<H', 2))        # block align
-        f.write(struct.pack('<H', 16))       # bits per sample
-        # data chunk
-        f.write(b'data')
-        f.write(struct.pack('<I', data_size))
-        for s in samples:
-            s = max(-1.0, min(1.0, s))
-            val = int(s * 32767)
-            f.write(struct.pack('<h', val))
-    
-    print(f"  Created {filename} ({num_samples} samples, {num_samples/sample_rate:.2f}s)")
+    try:
+        sf.write(path, samples, sample_rate, format='OGG', subtype='VORBIS')
+        print(f"  Created {filename} ({len(samples)} samples, {len(samples)/sample_rate:.2f}s)")
+    except Exception as e:
+        print(f"  Error writing {filename}: {e}")
 
 
 def square_wave(freq, t):
@@ -307,25 +288,25 @@ def main():
     print("Generating retro WAV sound effects...")
     
     generators = {
-        'jump.wav': gen_jump,
-        'super_jump.wav': gen_super_jump,
-        'push.wav': gen_push,
-        'land.wav': gen_land,
-        'explode.wav': gen_explode,
-        'powerup.wav': gen_powerup,
-        'bomb.wav': gen_bomb,
-        'stun.wav': gen_stun,
-        'combo.wav': gen_combo,
-        'line_clear.wav': gen_line_clear,
-        'game_over.wav': gen_game_over,
-        'menu_move.wav': gen_menu_move,
-        'menu_select.wav': gen_menu_select,
-        'helmet.wav': gen_helmet,
+        'jump.ogg': gen_jump,
+        'super_jump.ogg': gen_super_jump,
+        'push.ogg': gen_push,
+        'land.ogg': gen_land,
+        'explode.ogg': gen_explode,
+        'powerup.ogg': gen_powerup,
+        'bomb.ogg': gen_bomb,
+        'stun.ogg': gen_stun,
+        'combo.ogg': gen_combo,
+        'line_clear.ogg': gen_line_clear,
+        'game_over.ogg': gen_game_over,
+        'menu_move.ogg': gen_menu_move,
+        'menu_select.ogg': gen_menu_select,
+        'helmet.ogg': gen_helmet,
     }
     
     for filename, gen_func in generators.items():
         samples = gen_func()
-        write_wav(filename, samples)
+        write_ogg(filename, samples)
     
     print(f"\nDone! {len(generators)} sound effects created in assets/sounds/")
 

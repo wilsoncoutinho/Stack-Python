@@ -39,10 +39,7 @@ class Personagem:
         self.velocidade = cdef["speed"]
         self.gravidade = 0.5
         self.jump_force = cdef["jump"]
-        self.super_jump_force = cdef["super_jump"]
-        self.max_super_jumps = cdef["super_jumps"]
         self.max_bombs = cdef.get("bombs", 0)
-        self.super_jumps_left = cdef["super_jumps"]
         self.bombs_left = self.max_bombs
         self.no_chao = False
         self.estado = "parado"
@@ -50,15 +47,13 @@ class Personagem:
         self.frame = 0
         self.anim_tick = 0
         self.alive = True
-        self.stun_timer = 0
         self.jump_queued = False
-        self.super_jump_queued = False
         self.jump_buffer = 0
-        self.super_jump_buffer = 0
         self.coyote_timer = 0
         self.push_cooldown = 0
         self.bomb_cooldown = 0
         self.helmet_timer = 0
+        self.has_double_jumped = False
         self.sprites = char_sprites[char_id]
         self.num_frames = len(self.sprites)
 
@@ -79,21 +74,12 @@ class Personagem:
 
     # ----- Actions -----
     def pular(self):
-        if self.alive and self.stun_timer <= 0:
+        if self.alive:
             self.jump_queued = True
             self.jump_buffer = JUMP_BUFFER_FRAMES
             play_sound(sound_jump)
 
-    def super_pular(self):
-        if self.alive and self.stun_timer <= 0 and self.super_jumps_left > 0:
-            self.super_jump_queued = True
-            self.super_jump_buffer = JUMP_BUFFER_FRAMES
-            play_sound(sound_super_jump)
 
-    def ativar_stun(self, duracao=25):
-        self.stun_timer = duracao
-        self.vel_x = 0
-        play_sound(sound_stun)
 
     # ----- Crate detection -----
     def _proximo_caixa(self, board_ref):
@@ -153,12 +139,7 @@ class Personagem:
         if not self.alive:
             return
 
-        if self.stun_timer > 0:
-            self.stun_timer -= 1
-            self.estado = "stun"
-            self.vel_x = 0
-            self._aplicar_fisica(board_ref)
-            return
+
 
         if self.no_chao:
             self.coyote_timer = COYOTE_FRAMES
@@ -167,8 +148,6 @@ class Personagem:
 
         if self.jump_buffer > 0:
             self.jump_buffer -= 1
-        if self.super_jump_buffer > 0:
-            self.super_jump_buffer -= 1
         if self.bomb_cooldown > 0:
             self.bomb_cooldown -= 1
         if self.helmet_timer > 0:
@@ -199,6 +178,7 @@ class Personagem:
                 self.dir = 1
             else:
                 self.vel_x = 0
+                
                 if self.no_chao:
                     self.estado = "parado"
 
@@ -211,9 +191,19 @@ class Personagem:
                 if ptype == "board":
                     bx, by = prox[1], prox[2]
                     if self._pode_empurrar_para(board_ref, bx, by):
-                        self._empurrar_caixa(board_ref, bx, by, bx + self.dir)
-                        self.push_cooldown = 16
-                        pushed = True
+                        # Frank's Passive: Chain Push (push up to 2 boxes)
+                        if self.char_id == "frank":
+                            nnx = bx + self.dir
+                            if 0 <= nnx < COLS and board_ref[by][nnx] != 0:
+                                if self._pode_empurrar_para(board_ref, nnx, by):
+                                    self._empurrar_caixa(board_ref, nnx, by, nnx + self.dir)
+                                    self._empurrar_caixa(board_ref, bx, by, nnx)
+                                    self.push_cooldown = 24
+                                    pushed = True
+                        if not pushed:
+                            self._empurrar_caixa(board_ref, bx, by, bx + self.dir)
+                            self.push_cooldown = 20
+                            pushed = True
                 elif ptype == "falling":
                     box = prox[1]
                     bx = box["x"]
@@ -244,23 +234,15 @@ class Personagem:
                 self.estado = "parado"
 
         can_jump_from_ground = self.no_chao or self.coyote_timer > 0
-        if self.super_jump_buffer > 0 and can_jump_from_ground and self.super_jumps_left > 0:
-            self.vel_y = self.super_jump_force
-            self.no_chao = False
-            self.coyote_timer = 0
-            self.estado = "pulando"
-            self.super_jumps_left -= 1
-            self.super_jump_queued = False
-            self.super_jump_buffer = 0
-            self.jump_queued = False
-            self.jump_buffer = 0
-        elif self.jump_buffer > 0 and can_jump_from_ground:
-            self.vel_y = self.jump_force
-            self.no_chao = False
-            self.coyote_timer = 0
-            self.estado = "pulando"
-            self.jump_queued = False
-            self.jump_buffer = 0
+        if self.jump_buffer > 0:
+            if can_jump_from_ground:
+                self.vel_y = self.jump_force
+                self.no_chao = False
+                self.coyote_timer = 0
+                self.estado = "pulando"
+                self.jump_queued = False
+                self.jump_buffer = 0
+
 
         self._aplicar_fisica(board_ref)
 
@@ -412,6 +394,7 @@ class Personagem:
             self.y = float(floor_y - self.PH)
             self.vel_y = 0
             self.no_chao = True
+            self.has_double_jumped = False
 
     # ----- Push crate -----
     def _empurrar_caixa(self, board_ref, from_x, from_y, to_x):
@@ -495,7 +478,8 @@ class Personagem:
                 continue
 
             if box["type"] == POWERUP_HELMET_TYPE:
-                self.helmet_timer = 5.0
+                # Sam's Passive: Helmet lasts twice as long
+                self.helmet_timer = 10.0 if self.char_id == "sam" else 5.0
                 state.score += 50
                 play_sound(sound_powerup)
                 state.screen_shake = 10
@@ -510,7 +494,8 @@ class Personagem:
             )
             if stomp_hit:
                 falling_boxes_list.remove(box)
-                state.score += 10
+                # Cath's Passive: Stomp gives 25 points instead of 10
+                state.score += 25 if self.char_id == "cath" else 10
                 play_sound(sound_explode)
                 self.vel_y = min(self.vel_y, -4)
                 continue

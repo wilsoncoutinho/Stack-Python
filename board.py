@@ -127,6 +127,11 @@ def do_post_landing():
         play_sound(sound_combo)
         for mx, my in matched:
             add_particles(mx * TILE_SIZE, my * TILE_SIZE, (255, 200, 50), 10)
+            
+        # Passive: Sam restores 1 bomb when completing colors (Match-3)
+        if state.player and state.player.char_id == "sam":
+            if state.player.bombs_left < 3:
+                state.player.bombs_left += 1
 
     if to_explode:
         state.explosion_anim_cells = list(to_explode)
@@ -144,8 +149,12 @@ def handle_bomb(bx, by):
     state.screen_shake = 20
     state.explosion_anim_cells = []
     play_sound(sound_explode)
-    for dx in range(-1, 2):
-        for dy in range(-1, 2):
+    
+    # Passive: Sam has a larger bomb radius
+    radius = 2 if (state.player and state.player.char_id == "sam") else 1
+    
+    for dx in range(-radius, radius + 1):
+        for dy in range(-radius, radius + 1):
             nx, ny = bx + dx, by + dy
             if 0 <= nx < COLS and 0 <= ny < ROWS:
                 state.board[ny][nx] = 0
@@ -160,8 +169,8 @@ def handle_bomb(bx, by):
         pgx, pgy = p.grid_x, p.grid_y
         p_row_top = p.grid_y
         p_row_bot = p.grid_y + 1
-        in_x_range = abs(pgx - bx) <= 1
-        in_y_range = (abs(p_row_top - by) <= 1) or (abs(p_row_bot - by) <= 1)
+        in_x_range = abs(pgx - bx) <= radius
+        in_y_range = (abs(p_row_top - by) <= radius) or (abs(p_row_bot - by) <= radius)
         if in_x_range and in_y_range:
             p.alive = False
             from game import stop_timers

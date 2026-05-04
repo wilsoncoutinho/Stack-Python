@@ -16,20 +16,21 @@ from constants import (
 # Characters that the custom font supports (verified visually)
 # ---------------------------------------------------------------------------
 _CUSTOM_FONT_CHARS = set(
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.$"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.$!"
 )
 
 
 def _get_fallback_font(size):
     """Get a system font as fallback for special characters."""
+    fallback_size = int(size * 1.6)
     for name in ["Impact", "Arial Black", "Segoe UI", "Verdana"]:
         try:
-            f = pygame.font.SysFont(name, size, bold=True)
+            f = pygame.font.SysFont(name, fallback_size, bold=True)
             if f:
                 return f
         except Exception:
             continue
-    return pygame.font.SysFont(None, size)
+    return pygame.font.SysFont(None, fallback_size)
 
 
 # ---------------------------------------------------------------------------
@@ -210,6 +211,14 @@ bg_img = pygame.transform.scale(load_img("extracted/back.png"), (WIDTH, HEIGHT))
 title_img = pygame.transform.scale(load_img("extracted/title.png"), (WIDTH, HEIGHT + HUD_H))
 
 crate_sprites = slice_sheet(load_img("extracted/crates.png"), 8, 8, TILE_SIZE / 8, count=14)
+
+try:
+    trophy_icon = pygame.image.load(os.path.join(ASSETS, "trophy.png")).convert()
+    trophy_icon.set_colorkey((255, 255, 255))
+    trophy_icon = pygame.transform.scale(trophy_icon, (24, 24))
+except Exception:
+    trophy_icon = pygame.Surface((24, 24), pygame.SRCALPHA)
+    pygame.draw.circle(trophy_icon, (255, 210, 50), (12, 12), 10)
 
 try:
     bomb_sprite = pygame.image.load(os.path.join(ASSETS, "extracted/crate_bomb.png")).convert_alpha()

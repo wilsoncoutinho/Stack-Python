@@ -23,6 +23,7 @@ ROWS = 12
 WIDTH = COLS * TILE_SIZE
 HEIGHT = ROWS * TILE_SIZE
 HUD_H = 48
+CONTROLS_H = 200
 
 # ---------------------------------------------------------------------------
 # Colors
@@ -84,23 +85,23 @@ CRANE_FRAME_FOR_CRATE = {1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5}
 # ---------------------------------------------------------------------------
 CHAR_DEFS = [
     {"id": "pete", "name": "Part-time Pete", "sprite": "man.png", "icon": "iconman.png",
-     "speed": 3.5, "jump": -7.5, "super_jump": -10.5, "super_jumps": 0, "bombs": 0,
-     "desc": "Basico. Sem super pulos."},
+     "speed": 3.5, "jump": -7.5, "super_jumps": 0, "bombs": 0, "ability": "none",
+     "desc": "Basico. O classico equilibrado."},
     {"id": "lizzie", "name": "Lazy Lizzie", "sprite": "woman.png", "icon": "icwoman.png",
-     "speed": 4.5, "jump": -7.0, "super_jump": -11.5, "super_jumps": 4, "bombs": 0,
-     "desc": "Rapida. 4 super pulos."},
+     "speed": 5.0, "jump": -7.5, "super_jumps": 0, "bombs": 0, "ability": "speed",
+     "desc": "Veloz. A mais rapida do elenco."},
     {"id": "frank", "name": "Forklift Frank", "sprite": "man2.png", "icon": "iconman2.png",
-     "speed": 4.5, "jump": -8.0, "super_jump": -12.0, "super_jumps": 1, "bombs": 0,
-     "desc": "Rapido, 1 super pulo."},
+     "speed": 4.0, "jump": -7.5, "super_jumps": 0, "bombs": 0, "ability": "double_push",
+     "desc": "Empurrao Duplo. Empurra ate 2 caixas alinhadas de uma vez."},
     {"id": "will", "name": "Warehouse Will", "sprite": "man3.png", "icon": "iconman3.png",
-     "speed": 4.0, "jump": -7.5, "super_jump": -11.5, "super_jumps": 2, "bombs": 0,
-     "desc": "Agil. 2 super pulos."},
+     "speed": 4.0, "jump": -9.5, "super_jumps": 0, "bombs": 0, "ability": "high_jump",
+     "desc": "Pulo Alto. Alcanca a altura de 2 caixas empilhadas."},
     {"id": "cath", "name": "Crate-Crazy Cath", "sprite": "woman2.png", "icon": "icwoman2.png",
-     "speed": 5.0, "jump": -7.5, "super_jump": -12.0, "super_jumps": 3, "bombs": 0,
-     "desc": "Muito rapida. 3 super pulos."},
+     "speed": 4.0, "jump": -7.5, "super_jumps": 0, "bombs": 0, "ability": "stomp",
+     "desc": "Pisao. Ganha 25 pontos ao pisar e quebrar caixas (o normal e 10)."},
     {"id": "sam", "name": "Super-Stacker Sam", "sprite": "man4.png", "icon": "iconman4.png",
-     "speed": 5.0, "jump": -8.0, "super_jump": -13.0, "super_jumps": 5, "bombs": 3,
-     "desc": "O melhor! 5 super pulos + 3 bombas."},
+     "speed": 3.0, "jump": -7.0, "super_jumps": 0, "bombs": 3, "ability": "bombs",
+     "desc": "Demolidor. Tem bombas com raio 2 e recupera 1 ao combinar 3 cores."}
 ]
 
 # ---------------------------------------------------------------------------
@@ -113,4 +114,4 @@ GAMEPLAY_MUSIC_FILES = [
     "gameplay_4.mid",  # 165 BPM - Intense
     "gameplay_5.mid",  # 195 BPM - Maximum chaos
 ]
-MUSIC_THRESHOLDS = [1.0, 2.0, 3.5, 5.5, 8.0]
+MUSIC_THRESHOLDS = [1.0, 4.0, 7.0, 10.0, 13.0]

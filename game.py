@@ -24,6 +24,33 @@ from renderer import draw_title, draw_char_select, draw_level_select, draw_game,
 # Clock reference
 clock = pygame.time.Clock()
 
+
+simulated_keys = {
+    pygame.K_LEFT: False, pygame.K_RIGHT: False,
+    pygame.K_UP: False, pygame.K_DOWN: False,
+    pygame.K_SPACE: False, pygame.K_RETURN: False, pygame.K_ESCAPE: False
+}
+
+def get_touch_key(x, y):
+    from constants import WIDTH, HEIGHT, HUD_H
+    ctrl_y = HEIGHT + HUD_H
+    if y < ctrl_y: return None
+    import math
+    # Sync with modernized renderer values
+    d_x, d_y = 90, ctrl_y + 100
+    if math.hypot(x - d_x, y - d_y) < 80:
+        if x < d_x - 15: return pygame.K_LEFT
+        if x > d_x + 15: return pygame.K_RIGHT
+        if y < d_y - 15: return pygame.K_UP
+        if y > d_y + 15: return pygame.K_DOWN
+        return None
+    if math.hypot(x - (WIDTH - 55), y - (ctrl_y + 75)) < 35: return pygame.K_SPACE
+    if math.hypot(x - (WIDTH - 135), y - (ctrl_y + 115)) < 35: return pygame.K_b
+    if abs(x - (WIDTH // 2 + 30)) < 30 and abs(y - (ctrl_y + 160)) < 20: return pygame.K_RETURN
+    if abs(x - (WIDTH // 2 - 30)) < 30 and abs(y - (ctrl_y + 160)) < 20: return pygame.K_ESCAPE
+    return None
+
+
 def reset_game(start_diff=1.0):
     state.screen_shake = 0
     state.particles = []
@@ -59,9 +86,20 @@ def run_game():
     play_music("title.mid", loops=-1)
 
     while True:
+
+        for event in pygame.event.get():
+            if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP):
+                k = get_touch_key(*event.pos)
+                if k:
+                    is_down = (event.type == pygame.MOUSEBUTTONDOWN)
+                    simulated_keys[k] = is_down
+                    if is_down: pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=k))
+            pygame.event.post(event)
+        events = pygame.event.get()
+
         if state.game_state == "title":
             draw_title()
-            for event in pygame.event.get():
+            for event in events:
                 if event.type == pygame.QUIT: pygame.quit(); sys.exit()
                 if event.type == pygame.KEYDOWN:
                     if event.key in (pygame.K_RETURN, pygame.K_SPACE):
@@ -73,7 +111,7 @@ def run_game():
 
         elif state.game_state == "char_select":
             draw_char_select()
-            for event in pygame.event.get():
+            for event in events:
                 if event.type == pygame.QUIT: pygame.quit(); sys.exit()
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
@@ -99,7 +137,7 @@ def run_game():
 
         elif state.game_state == "level_select":
             draw_level_select()
-            for event in pygame.event.get():
+            for event in events:
                 if event.type == pygame.QUIT: pygame.quit(); sys.exit()
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
@@ -118,7 +156,7 @@ def run_game():
             clock.tick(30)
 
         elif state.game_state == "play":
-            for event in pygame.event.get():
+            for event in events:
                 if event.type == pygame.QUIT: pygame.quit(); sys.exit()
                 if not state.player.alive:
                     if event.type == pygame.KEYDOWN:
@@ -136,13 +174,12 @@ def run_game():
                     if event.key == pygame.K_ESCAPE:
                         stop_timers(); pause_music()
                         state.game_state = "pause"
-                    elif event.key in (pygame.K_UP, pygame.K_w): state.player.pular()
-                    elif event.key == pygame.K_SPACE: state.player.super_pular()
+                    elif event.key in (pygame.K_UP, pygame.K_w, pygame.K_SPACE): state.player.pular()
                     elif event.key == pygame.K_b: state.player.try_place_bomb(state.board)
 
             if state.player.alive:
                 keys = pygame.key.get_pressed()
-                teclas = {"esquerda": keys[pygame.K_LEFT] or keys[pygame.K_a], "direita": keys[pygame.K_RIGHT] or keys[pygame.K_d]}
+                teclas = {"esquerda": keys[pygame.K_LEFT] or keys[pygame.K_a] or simulated_keys.get(pygame.K_LEFT, False), "direita": keys[pygame.K_RIGHT] or keys[pygame.K_d] or simulated_keys.get(pygame.K_RIGHT, False)}
                 state.player.atualizar(teclas, state.board)
                 state.player.check_falling_collision(state.falling_boxes)
                 update_crane()
@@ -172,7 +209,7 @@ def run_game():
 
         elif state.game_state == "pause":
             draw_game(flip=False); draw_retro_tv("pause")
-            for event in pygame.event.get():
+            for event in events:
                 if event.type == pygame.QUIT: pygame.quit(); sys.exit()
                 if event.type == pygame.KEYDOWN:
                     if event.key in (pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_SPACE):
@@ -184,7 +221,7 @@ def run_game():
         elif state.game_state == "ad":
             draw_retro_tv("ad", max(0, ad_timer // 60))
             if ad_timer > 0: ad_timer -= 1
-            for event in pygame.event.get():
+            for event in events:
                 if event.type == pygame.QUIT: pygame.quit(); sys.exit()
                 if event.type == pygame.KEYDOWN:
                     if event.key in (pygame.K_RETURN, pygame.K_SPACE) and ad_timer <= 0:

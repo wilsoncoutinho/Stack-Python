@@ -17,6 +17,7 @@ from assets_loader import (
     crane_sprites, CRANE_SPRITE_W,
     font_big, font_med, font_sm, font_xs,
     render_styled_text, crate_sprite_for_type,
+    trophy_icon,
 )
 from highscores import highscores
 import state
@@ -34,20 +35,43 @@ def draw_hud_to(target_surf):
     pygame.draw.line(target_surf, (50, 60, 80), (0, HEIGHT), (WIDTH, HEIGHT), 2)
     
     # Left side: Score
-    txt_pts = font_med.render(f"PONTOS {state.score}", True, (255, 210, 50))
-    target_surf.blit(txt_pts, (10, HEIGHT + 12))
+    icon_y = HEIGHT + (HUD_H - trophy_icon.get_height()) // 2
+    target_surf.blit(trophy_icon, (10, icon_y))
     
-    # Center-Left: Super Jumps
-    if state.player and state.player.max_super_jumps > 0:
-        sj_color = (100, 220, 255) if state.player.super_jumps_left > 0 else (100, 100, 120)
-        sj_txt = font_med.render(f"SUPER {state.player.super_jumps_left}", True, sj_color)
-        screen_center = WIDTH // 2
-        target_surf.blit(sj_txt, (screen_center - 20, HEIGHT + 12))
+    txt_pts = font_med.render(str(state.score), True, (255, 210, 50))
+    target_surf.blit(txt_pts, (15 + trophy_icon.get_width(), HEIGHT + (HUD_H - txt_pts.get_height()) // 2))
+    
+    # Center: Passive Ability Badge
+    if state.player:
+        from constants import CHAR_DEFS
+        cdef = next(c for c in CHAR_DEFS if c["id"] == state.player.char_id)
+        ability = cdef.get("ability", "none")
+        
+        ability_labels = {
+            "none": ("TRABALHADOR", (150, 150, 170)),
+            "speed": ("VELOZ", (100, 220, 255)),
+            "double_push": ("MAIS FORTE", (255, 180, 80)),
+            "high_jump": ("PULO ALTO", (120, 255, 120)),
+            "stomp": ("PISÃO", (255, 100, 100)),
+            "bombs": ("DEMOLIDOR", (255, 50, 50))
+        }
+        ab_name, ab_color = ability_labels.get(ability, ("???", (255, 255, 255)))
+        
+        cx = WIDTH // 2
+        ab_surf = font_xs.render(ab_name, True, ab_color)
+        
+        # Dynamic width badge
+        bw = max(80, ab_surf.get_width() + 20)
+        bg_rect = pygame.Rect(cx - bw//2, HEIGHT + (HUD_H - 24)//2, bw, 24)
+        
+        # Draw the Badge (dark fill + bright border)
+        pygame.draw.rect(target_surf, (ab_color[0]//5, ab_color[1]//5, ab_color[2]//5), bg_rect, border_radius=6)
+        pygame.draw.rect(target_surf, ab_color, bg_rect, 1, border_radius=6)
+        target_surf.blit(ab_surf, (cx - ab_surf.get_width()//2, HEIGHT + (HUD_H - ab_surf.get_height()) // 2))
         
     # Right side: Level and Bombs
-    lvl = int(state.difficulty)
-    lvl_txt = font_sm.render(f"NIVEL {lvl}", True, (180, 200, 220))
-    target_surf.blit(lvl_txt, (WIDTH - lvl_txt.get_width() - 15, HEIGHT + 10))
+    lvl_txt = font_sm.render(f"NIVEL {int(state.difficulty)}", True, (180, 190, 210))
+    target_surf.blit(lvl_txt, (WIDTH - lvl_txt.get_width() - 10, HEIGHT + (HUD_H - lvl_txt.get_height()) // 2))
     
     if state.player and getattr(state.player, "max_bombs", 0) > 0:
         b_color = (255, 100, 100) if state.player.bombs_left > 0 else (120, 80, 80)
@@ -187,7 +211,8 @@ def draw_game(flip=True):
 
     _screen.fill((0, 0, 0))
     _screen.blit(temp_surface, (offset_x, offset_y))
-    if flip: pygame.display.flip()
+    if flip: draw_mobile_controls()
+    pygame.display.flip()
 
 def draw_retro_tv(content_type="pause", timer=0):
     overlay = pygame.Surface((WIDTH, HEIGHT + HUD_H), pygame.SRCALPHA)
@@ -226,13 +251,98 @@ def draw_retro_tv(content_type="pause", timer=0):
         s.fill((0, 0, 0, 80))
         _screen.blit(s, (screen_x, row))
     
+    draw_mobile_controls()
+
+    
     pygame.display.flip()
+
+
+def draw_mobile_controls():
+    if not _screen: return
+    try:
+        from constants import CONTROLS_H
+    except ImportError:
+        return
+    ctrl_y = HEIGHT + HUD_H
+    
+    # Base Gameboy Chassis (slightly lighter, modern off-white)
+    chassis_color = (225, 230, 220)
+    pygame.draw.rect(_screen, chassis_color, (0, ctrl_y, WIDTH, CONTROLS_H))
+    
+    # Top bevel highlight and shadow
+    pygame.draw.line(_screen, (180, 185, 175), (0, ctrl_y), (WIDTH, ctrl_y), 4)
+    pygame.draw.line(_screen, (255, 255, 255), (0, ctrl_y+4), (WIDTH, ctrl_y+4), 2)
+    
+    # Modern Rounded D-Pad
+    d_x, d_y = 90, ctrl_y + 100
+    d_w, d_h = 40, 40
+    d_color = (45, 48, 52)
+    d_shadow = (180, 185, 175)
+    
+    # D-pad shadow
+    pygame.draw.rect(_screen, d_shadow, (d_x - d_w//2 - 5, d_y - d_h*1.5 - 5, d_w + 10, d_h*3 + 10), border_radius=12)
+    pygame.draw.rect(_screen, d_shadow, (d_x - d_w*1.5 - 5, d_y - d_h//2 - 5, d_w*3 + 10, d_h + 10), border_radius=12)
+    
+    # D-pad cross (Vertical then Horizontal to blend)
+    pygame.draw.rect(_screen, d_color, (d_x - d_w//2, d_y - d_h*1.5, d_w, d_h*3), border_radius=8)
+    pygame.draw.rect(_screen, d_color, (d_x - d_w*1.5, d_y - d_h//2, d_w*3, d_h), border_radius=8)
+    
+    # Center circle for D-pad indentation
+    pygame.draw.circle(_screen, (35, 38, 42), (d_x, d_y), 12)
+    
+    # Modern A / B Buttons
+    btn_r = 28
+    a_x, a_y = WIDTH - 55, ctrl_y + 75
+    b_x, b_y = WIDTH - 135, ctrl_y + 115
+    
+    btn_color = (210, 45, 75)
+    btn_shadow = (180, 185, 175)
+    btn_highlight = (240, 80, 100)
+    
+    # Shadows
+    pygame.draw.circle(_screen, btn_shadow, (a_x + 2, a_y + 4), btn_r + 2)
+    pygame.draw.circle(_screen, btn_shadow, (b_x + 2, b_y + 4), btn_r + 2)
+    
+    # Base buttons
+    pygame.draw.circle(_screen, btn_color, (a_x, a_y), btn_r)
+    pygame.draw.circle(_screen, btn_color, (b_x, b_y), btn_r)
+    
+    # Inner highlight (top left)
+    pygame.draw.arc(_screen, btn_highlight, (a_x - btn_r + 4, a_y - btn_r + 4, btn_r*2 - 8, btn_r*2 - 8), 1.5, 3.14, 4)
+    pygame.draw.arc(_screen, btn_highlight, (b_x - btn_r + 4, b_y - btn_r + 4, btn_r*2 - 8, btn_r*2 - 8), 1.5, 3.14, 4)
+    
+    a_txt = font_sm.render("A", True, (255, 200, 210))
+    _screen.blit(a_txt, (a_x - a_txt.get_width()//2 + 1, a_y - a_txt.get_height()//2 + 2))
+    
+    b_txt = font_sm.render("B", True, (255, 200, 210))
+    _screen.blit(b_txt, (b_x - b_txt.get_width()//2 + 1, b_y - b_txt.get_height()//2 + 2))
+    
+    # Start / Select (Pill shaped, angled look via offset)
+    st_w, st_h = 45, 14
+    st_x, st_y = WIDTH // 2 + 30, ctrl_y + 160
+    se_x, se_y = WIDTH // 2 - 30, ctrl_y + 160
+    
+    st_color = (80, 85, 90)
+    pygame.draw.rect(_screen, d_shadow, (st_x - st_w//2 + 2, st_y - st_h//2 + 3, st_w, st_h), border_radius=7)
+    pygame.draw.rect(_screen, d_shadow, (se_x - st_w//2 + 2, se_y - st_h//2 + 3, st_w, st_h), border_radius=7)
+    
+    pygame.draw.rect(_screen, st_color, (st_x - st_w//2, st_y - st_h//2, st_w, st_h), border_radius=7)
+    pygame.draw.rect(_screen, st_color, (se_x - st_w//2, se_y - st_h//2, st_w, st_h), border_radius=7)
+    
+    # Labels for Start/Select
+    lbl_sel = font_xs.render("SELECT", True, (140, 145, 140))
+    lbl_st = font_xs.render("START", True, (140, 145, 140))
+    _screen.blit(lbl_sel, (se_x - lbl_sel.get_width()//2, se_y - 20))
+    _screen.blit(lbl_st, (st_x - lbl_st.get_width()//2, st_y - 20))
+
 
 def draw_title():
     _screen.blit(title_img, (0, 0))
     pulse = int(128 + 127 * abs((pygame.time.get_ticks() % 2000) / 1000 - 1))
     t = font_med.render("Pressione ENTER para jogar", True, (pulse, pulse, 255))
     _screen.blit(t, (WIDTH // 2 - t.get_width() // 2, HEIGHT + HUD_H - 36))
+    draw_mobile_controls()
+
     pygame.display.flip()
 
 def draw_char_select():
@@ -253,9 +363,9 @@ def draw_char_select():
     
     pygame.draw.line(_screen, (255, 210, 50), (40, title_y + 45), (WIDTH - 40, title_y + 45), 3)
 
-    margin_x, margin_y, spacing_x, spacing_y = 30, 100, 18, 22
+    margin_x, margin_y, spacing_x, spacing_y = 20, 85, 12, 12
     cell_w = (WIDTH - (margin_x * 2) - 2 * spacing_x) // 3
-    cell_h = (total_h - margin_y - 50 - spacing_y) // 2
+    cell_h = (total_h - margin_y - 65 - spacing_y) // 2
 
     for i, cdef in enumerate(CHAR_DEFS):
         r, c = i // 3, i % 3
@@ -301,24 +411,50 @@ def draw_char_select():
         name_parts = name_str.split()
         if len(name_parts) == 3: name_parts = [name_parts[0] + " " + name_parts[1], name_parts[2]]
         
-        name_y = sprite_bottom + 2
+        name_y = sprite_bottom + 4
         for part in name_parts:
             p_font = font_xs if len(part) > 9 else font_sm
             p_surf = render_styled_text(part, p_font, (255, 255, 255) if is_sel else (180, 190, 200), outline_color=(0, 0, 0), outline_width=2)
             _screen.blit(p_surf, (cx - p_surf.get_width() // 2, name_y))
-            name_y += 12 if p_font == font_xs else 14
+            name_y += 14 if p_font == font_xs else 16
         
         rec = highscores.get(cdef["id"], 0)
         rec_surf = render_styled_text(f"RECORDE {rec}", font_xs, (255, 210, 50) if rec > 0 else (120, 130, 145), outline_width=1)
-        _screen.blit(rec_surf, (cx - rec_surf.get_width() // 2, name_y))
+        # Give a small gap before the record
+        _screen.blit(rec_surf, (cx - rec_surf.get_width() // 2, name_y + 2))
+        name_y += 14
 
-        # Stats
-        bar_y, bar_w, bar_x = name_y + 18, cell_w - 55, rx + 38
+        # Stats & Passive
+        # Move the speed bar and passive section a bit further down to clear the names
+        bar_y, bar_w, bar_x = name_y + 10, cell_w - 55, rx + 38
+        
+        # Speed 
         pygame.draw.rect(_screen, (22, 24, 32), (bar_x, bar_y, bar_w, 7), border_radius=3)
         pygame.draw.rect(_screen, (70, 150, 255), (bar_x, bar_y, int(bar_w * (cdef['speed'] / 5.0)), 7), border_radius=3)
-        bar_y += 16
-        pygame.draw.rect(_screen, (22, 24, 32), (bar_x, bar_y, bar_w, 7), border_radius=3)
-        pygame.draw.rect(_screen, (70, 255, 130), (bar_x, bar_y, int(bar_w * (cdef['super_jumps'] / 5.0)), 7), border_radius=3)
+        spd_txt = font_xs.render("VEL", True, (70, 150, 255))
+        _screen.blit(spd_txt, (rx + 8, bar_y - 2))
+        
+        # Passive Badge
+        ability = cdef.get("ability", "none")
+        ability_labels = {
+            "none": ("TRABALHADOR", (150, 150, 170)),
+            "speed": ("VELOZ", (100, 220, 255)),
+            "double_push": ("MAIS FORTE", (255, 180, 80)),
+            "high_jump": ("PULO ALTO", (120, 255, 120)),
+            "stomp": ("PISÃO", (255, 100, 100)),
+            "bombs": ("DEMOLIDOR", (255, 50, 50))
+        }
+        
+        ab_name, ab_color = ability_labels.get(ability, ("???", (255, 255, 255)))
+        
+        # Draw the colored badge (centered below the velocity bar)
+        badge_w, badge_h = cell_w - 20, 22
+        badge_rect = pygame.Rect(cx - badge_w//2, bar_y + 16, badge_w, badge_h)
+        pygame.draw.rect(_screen, (ab_color[0]//5, ab_color[1]//5, ab_color[2]//5), badge_rect, border_radius=6)
+        pygame.draw.rect(_screen, ab_color, badge_rect, 1, border_radius=6)
+        
+        ab_surf = font_xs.render(ab_name, True, ab_color)
+        _screen.blit(ab_surf, (badge_rect.centerx - ab_surf.get_width()//2, badge_rect.centery - ab_surf.get_height()//2))
     # Footer navigation bar
     footer_y = total_h - 45
     pygame.draw.rect(_screen, (15, 18, 25), (0, footer_y, WIDTH, 45))
@@ -334,6 +470,9 @@ def draw_char_select():
         ix += k_r.get_width()
         _screen.blit(t_r, (ix, footer_y + 12))
         ix += t_r.get_width()
+
+    draw_mobile_controls()
+
 
     pygame.display.flip()
 
@@ -436,5 +575,8 @@ def draw_level_select():
         draw_kx += k_surf.get_width()
         _screen.blit(l_surf, (draw_kx, footer_y + 12))
         draw_kx += l_surf.get_width()
+
+    draw_mobile_controls()
+
 
     pygame.display.flip()
