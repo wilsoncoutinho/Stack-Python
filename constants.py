@@ -87,8 +87,8 @@ CRANE_FRAME_FOR_CRATE = {1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5}
 # ---------------------------------------------------------------------------
 CHAR_DEFS = [
     {"id": "pete", "name": "Part-time Pete", "sprite": "man.png", "icon": "iconman.png",
-     "speed": 3.5, "jump": -7.5, "super_jumps": 0, "bombs": 0, "ability": "none",
-     "desc": "Basico. O classico equilibrado."},
+     "speed": 3.5, "jump": -7.5, "super_jumps": 0, "bombs": 0, "ability": "promotion",
+     "desc": "Promocao de Cargo. Ganha habilidade aleatoria por 10s ao fazer combo."},
     {"id": "lizzie", "name": "Lazy Lizzie", "sprite": "woman.png", "icon": "icwoman.png",
      "speed": 5.0, "jump": -7.5, "super_jumps": 0, "bombs": 0, "ability": "speed",
      "desc": "Veloz. A mais rapida do elenco."},

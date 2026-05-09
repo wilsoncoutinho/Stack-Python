@@ -133,9 +133,21 @@ def do_post_landing():
             if state.player.bombs_left < 3:
                 state.player.bombs_left += 1
         
+        # Passive: Pete's "Promocao de Cargo" (Random ability)
+        if state.player and state.player.char_id == "pete":
+            import random
+            from audio import sound_powerup
+            abilities = ["speed", "double_push", "high_jump", "color_clear", "bombs"]
+            state.pete_temp_ability = random.choice(abilities)
+            state.pete_ability_timer = 600  # 10s at 60fps
+            play_sound(sound_powerup)
+        
         # Passive: Cath's "Sobrecarga" (Color Clear)
         # Destroy all other crates of the same color that was matched
-        if state.player and state.player.char_id == "cath":
+        is_cath = state.player and state.player.char_id == "cath"
+        is_pete_cath = state.player and state.player.char_id == "pete" and state.pete_temp_ability == "color_clear"
+        
+        if is_cath or is_pete_cath:
             matched_colors = set()
             for mx, my in matched:
                 ctype = state.board[my][mx]

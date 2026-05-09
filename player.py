@@ -148,6 +148,33 @@ class Personagem:
             self._aplicar_fisica(board_ref)
             return
 
+        # Pete's Promotion Management
+        if self.char_id == "pete":
+            if state.pete_ability_timer > 0:
+                state.pete_ability_timer -= 1
+                # Apply stats based on active temp ability
+                if state.pete_temp_ability == "speed":
+                    self.velocidade = 5.5
+                else:
+                    self.velocidade = 3.5
+                    
+                if state.pete_temp_ability == "high_jump":
+                    self.jump_force = -10.5
+                else:
+                    self.jump_force = -7.5
+                
+                # If promoted to bombs, grant Pete bombs if he's empty
+                if state.pete_temp_ability == "bombs" and self.bombs_left == 0:
+                    self.bombs_left = 1
+                
+                if state.pete_ability_timer == 0:
+                    state.pete_temp_ability = None
+                    self.velocidade = 3.5
+                    self.jump_force = -7.5
+            else:
+                self.velocidade = 3.5
+                self.jump_force = -7.5
+
 
 
         if self.no_chao:
@@ -223,8 +250,11 @@ class Personagem:
                     if wants_to_push:
                         can_push_single = self._pode_empurrar_para(board_ref, bx, by)
                         
-                        # Frank's Passive: Chain Push (push up to 2 boxes)
-                        if not can_push_single and self.char_id == "frank":
+                        # Frank's Passive or Pete's Promotion: Chain Push (push up to 2 boxes)
+                        is_frank = self.char_id == "frank"
+                        is_pete_push = self.char_id == "pete" and state.pete_temp_ability == "double_push"
+                        
+                        if not can_push_single and (is_frank or is_pete_push):
                             nx2 = bx + self.dir
                             if 0 <= nx2 < COLS and board_ref[by][nx2] != 0:
                                 # If blocked by exactly ONE box, check if THAT box can move
@@ -616,7 +646,8 @@ class Personagem:
 
     # ----- Bomb placement -----
     def try_place_bomb(self, board_ref):
-        if self.bombs_left > 0 and self.bomb_cooldown <= 0:
+        can_pete_bomb = self.char_id == "pete" and state.pete_temp_ability == "bombs"
+        if (self.max_bombs > 0 or can_pete_bomb) and self.bombs_left > 0 and self.bomb_cooldown <= 0:
             tx = self.grid_x + self.dir
             ty = self.grid_y
             tx = max(0, min(COLS - 1, tx))

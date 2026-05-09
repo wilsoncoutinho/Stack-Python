@@ -112,9 +112,15 @@ def draw_hud_to(target_surf):
             "double_push": ("MAIS FORTE", (255, 180, 80)),
             "high_jump": ("PULO ALTO", (120, 255, 120)),
             "color_clear": ("SOBRECARGA", (255, 100, 255)),
-            "bombs": ("DEMOLIDOR", (255, 50, 50))
+            "bombs": ("DEMOLIDOR", (255, 50, 50)),
+            "promotion": ("TRABALHADOR", (150, 150, 170))
         }
-        ab_name, ab_color = ability_labels.get(ability, ("???", (255, 255, 255)))
+        
+        # If Pete is promoted, show the temp ability name
+        if state.player.char_id == "pete" and state.pete_temp_ability:
+            ab_name, ab_color = ability_labels.get(state.pete_temp_ability, ("???", (255, 255, 255)))
+        else:
+            ab_name, ab_color = ability_labels.get(ability, ("???", (255, 255, 255)))
         
         cx = WIDTH // 2
         ab_surf = font_xs.render(ab_name, True, ab_color)
@@ -127,12 +133,18 @@ def draw_hud_to(target_surf):
         pygame.draw.rect(target_surf, (ab_color[0]//5, ab_color[1]//5, ab_color[2]//5), bg_rect, border_radius=6)
         pygame.draw.rect(target_surf, ab_color, bg_rect, 1, border_radius=6)
         
+        # If Pete has a timer, draw a progress bar at the bottom of the badge
+        if state.player.char_id == "pete" and state.pete_ability_timer > 0:
+            progress = state.pete_ability_timer / 600.0 # 10s
+            bar_w = int((bw - 4) * progress)
+            pygame.draw.rect(target_surf, ab_color, (bg_rect.x + 2, bg_rect.bottom - 4, bar_w, 2))
+
         # Glow
         badge_glow = pygame.Surface((bw + 10, 38), pygame.SRCALPHA)
         pygame.draw.rect(badge_glow, (*ab_color, 30), badge_glow.get_rect(), border_radius=8, width=2)
         target_surf.blit(badge_glow, (bg_rect.x - 5, bg_rect.y - 5), special_flags=pygame.BLEND_ADD)
         
-        target_surf.blit(ab_surf, (cx - ab_surf.get_width()//2, mid_y - ab_surf.get_height()//2))
+        target_surf.blit(ab_surf, (cx - ab_surf.get_width()//2, mid_y - ab_surf.get_height()//2 - 1))
         
     # Right-mid: Power Quantity
     if state.player and getattr(state.player, "max_bombs", 0) > 0:
@@ -528,7 +540,8 @@ def draw_char_select():
             "double_push": ("MAIS FORTE", (255, 180, 80)),
             "high_jump": ("PULO ALTO", (120, 255, 120)),
             "color_clear": ("SOBRECARGA", (255, 100, 255)),
-            "bombs": ("DEMOLIDOR", (255, 50, 50))
+            "bombs": ("DEMOLIDOR", (255, 50, 50)),
+            "promotion": ("TRABALHADOR", (150, 150, 170))
         }
         
         ab_name, ab_color = ability_labels.get(ability, ("???", (255, 255, 255)))

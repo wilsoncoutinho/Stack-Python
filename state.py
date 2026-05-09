@@ -56,3 +56,10 @@ crane_frame = 0
 game_state = "title"
 selected_char = 0
 selected_level = 1
+
+# ---------------------------------------------------------------------------
+# Character Specifics
+# ---------------------------------------------------------------------------
+pete_temp_ability = None
+pete_ability_timer = 0
+
