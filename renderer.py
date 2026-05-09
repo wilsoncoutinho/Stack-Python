@@ -77,19 +77,29 @@ def draw_hud_to(target_surf):
     pygame.draw.rect(target_surf, (18, 22, 32), (0, HEIGHT, WIDTH, HUD_H))
     pygame.draw.line(target_surf, (50, 60, 80), (0, HEIGHT), (WIDTH, HEIGHT), 2)
     
-    # Left side: Score
-    icon_y = HEIGHT + (HUD_H - trophy_icon.get_height()) // 2
+    # Y-center for all horizontal elements
+    mid_y = HEIGHT + 30
     
+    # Left side: Score
+    trophy_y = mid_y - 12
     # Add glow to trophy
     glow_surf = pygame.Surface((30, 30), pygame.SRCALPHA)
     pygame.draw.circle(glow_surf, (255, 210, 50, 40), (15, 15), 14)
-    target_surf.blit(glow_surf, (7, icon_y - 3), special_flags=pygame.BLEND_ADD)
-    
-    target_surf.blit(trophy_icon, (10, icon_y))
+    target_surf.blit(glow_surf, (7, trophy_y - 3), special_flags=pygame.BLEND_ADD)
+    target_surf.blit(trophy_icon, (10, trophy_y))
     
     txt_pts = font_med.render(str(state.score), True, (255, 210, 50))
-    target_surf.blit(txt_pts, (15 + trophy_icon.get_width(), HEIGHT + (HUD_H - txt_pts.get_height()) // 2))
+    target_surf.blit(txt_pts, (36, mid_y - txt_pts.get_height()//2))
     
+    # Helmet Timer (Left-mid)
+    if state.player and state.player.helmet_timer > 0:
+        h_secs = math.ceil(state.player.helmet_timer)
+        helmet_icon = crate_sprite_for_type(POWERUP_HELMET_TYPE)
+        icon_small = pygame.transform.scale(helmet_icon, (22, 22))
+        target_surf.blit(icon_small, (90, mid_y - 11))
+        h_txt = font_sm.render(f"{h_secs}S", True, (100, 255, 100))
+        target_surf.blit(h_txt, (116, mid_y - h_txt.get_height()//2 + 1))
+        
     # Center: Passive Ability Badge
     if state.player:
         from constants import CHAR_DEFS
@@ -101,7 +111,7 @@ def draw_hud_to(target_surf):
             "speed": ("VELOZ", (100, 220, 255)),
             "double_push": ("MAIS FORTE", (255, 180, 80)),
             "high_jump": ("PULO ALTO", (120, 255, 120)),
-            "stomp": ("CABECADA", (255, 100, 100)),
+            "color_clear": ("SOBRECARGA", (255, 100, 255)),
             "bombs": ("DEMOLIDOR", (255, 50, 50))
         }
         ab_name, ab_color = ability_labels.get(ability, ("???", (255, 255, 255)))
@@ -111,7 +121,7 @@ def draw_hud_to(target_surf):
         
         # Dynamic width badge
         bw = max(80, ab_surf.get_width() + 20)
-        bg_rect = pygame.Rect(cx - bw//2, HEIGHT + (HUD_H - 28)//2, bw, 28)
+        bg_rect = pygame.Rect(cx - bw//2, mid_y - 14, bw, 28)
         
         # Draw the Badge (dark fill + bright border)
         pygame.draw.rect(target_surf, (ab_color[0]//5, ab_color[1]//5, ab_color[2]//5), bg_rect, border_radius=6)
@@ -122,42 +132,37 @@ def draw_hud_to(target_surf):
         pygame.draw.rect(badge_glow, (*ab_color, 30), badge_glow.get_rect(), border_radius=8, width=2)
         target_surf.blit(badge_glow, (bg_rect.x - 5, bg_rect.y - 5), special_flags=pygame.BLEND_ADD)
         
-        target_surf.blit(ab_surf, (cx - ab_surf.get_width()//2, HEIGHT + (HUD_H - ab_surf.get_height()) // 2))
+        target_surf.blit(ab_surf, (cx - ab_surf.get_width()//2, mid_y - ab_surf.get_height()//2))
         
-    # Right side: Level (top row) and item icons (bottom row)
-    lvl_txt = font_sm.render(f"NIVEL {int(state.difficulty)}", True, (180, 190, 210))
-    target_surf.blit(lvl_txt, (WIDTH - lvl_txt.get_width() - 10, HEIGHT + 6))
-    
-    # Item icons positioned below level text
-    item_y = HEIGHT + 30
-    
+    # Right-mid: Power Quantity
     if state.player and getattr(state.player, "max_bombs", 0) > 0:
-        # Sam's Bombs Icon
         bomb_icon = crate_sprite_for_type(BOMB_TYPE)
         icon_small = pygame.transform.scale(bomb_icon, (22, 22))
-        target_surf.blit(icon_small, (WIDTH - 70, item_y))
+        target_surf.blit(icon_small, (WIDTH - 110, mid_y - 11))
         b_color = (255, 120, 120) if state.player.bombs_left > 0 else (120, 80, 80)
         b_txt = font_sm.render(f"X{state.player.bombs_left}", True, b_color)
-        target_surf.blit(b_txt, (WIDTH - 45, item_y + 2))
+        target_surf.blit(b_txt, (WIDTH - 84, mid_y - b_txt.get_height()//2 + 1))
         
-    if state.player and getattr(state.player, "helmet_charges", 0) > 0:
-        # Cath's Helmet Icon
-        helmet_icon = crate_sprite_for_type(POWERUP_HELMET_TYPE)
-        icon_small = pygame.transform.scale(helmet_icon, (22, 22))
-        target_surf.blit(icon_small, (WIDTH - 70, item_y))
-        c_color = (120, 255, 120)
-        c_txt = font_sm.render(f"X{state.player.helmet_charges}", True, c_color)
-        target_surf.blit(c_txt, (WIDTH - 45, item_y + 2))
-        
-    # Overlays
-    if state.player and state.player.helmet_timer > 0:
-        h_secs = math.ceil(state.player.helmet_timer)
-        h_txt = font_sm.render(f"CAPACETE {h_secs}", True, (100, 255, 100))
-        target_surf.blit(h_txt, (10, HEIGHT + 42))
-        
+    # Right side: Level (Golden Circular Badge)
+    lvl_bg = pygame.Surface((28, 28), pygame.SRCALPHA)
+    pygame.draw.circle(lvl_bg, (255, 210, 50, 60), (14, 14), 14)  # Semi-transparent fill
+    pygame.draw.circle(lvl_bg, (255, 210, 50), (14, 14), 14, 3)   # Thick outline
+    
+    lvl_str = str(int(state.difficulty))
+    lvl_num = font_sm.render(lvl_str, True, (255, 255, 255))
+    lvl_bg.blit(lvl_num, (14 - lvl_num.get_width()//2, 14 - lvl_num.get_height()//2))
+    
+    # Glow for level icon (gold)
+    lvl_glow = pygame.Surface((34, 34), pygame.SRCALPHA)
+    pygame.draw.circle(lvl_glow, (255, 210, 50, 40), (17, 17), 15)
+    target_surf.blit(lvl_glow, (WIDTH - 41, mid_y - 17), special_flags=pygame.BLEND_ADD)
+    
+    target_surf.blit(lvl_bg, (WIDTH - 38, mid_y - 14))
+    
+    # Overlays (Combo text fits perfectly under the badge)
     if state.combo_count > 1:
         combo_txt = font_sm.render(f"COMBO X{state.combo_count}!", True, (255, 150, 50))
-        target_surf.blit(combo_txt, (WIDTH // 2 - combo_txt.get_width() // 2, HEIGHT + 42))
+        target_surf.blit(combo_txt, (WIDTH // 2 - combo_txt.get_width() // 2, mid_y + 15))
 
 def draw_game(flip=True):
     if not _screen: return
@@ -522,7 +527,7 @@ def draw_char_select():
             "speed": ("VELOZ", (100, 220, 255)),
             "double_push": ("MAIS FORTE", (255, 180, 80)),
             "high_jump": ("PULO ALTO", (120, 255, 120)),
-            "stomp": ("CABECADA", (255, 100, 100)),
+            "color_clear": ("SOBRECARGA", (255, 100, 255)),
             "bombs": ("DEMOLIDOR", (255, 50, 50))
         }
         
@@ -585,7 +590,7 @@ def draw_level_select():
     levels = [
         ("Nivel 1", "1 Guindaste", "Velocidade baixa. Ideal para aprender.", (70, 180, 70)),
         ("Nivel 2", "2 Guindastes", "Velocidade media. Mais desafiador.", (70, 150, 255)),
-        ("Nivel 3", "3 Guindastes", "Ritmo intenso. Para experts!", (255, 100, 100)),
+        ("Nivel 3", "3 Guindastes", "Ritmo intenso. Para experts", (255, 100, 100)),
     ]
 
     start_y = 100

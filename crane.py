@@ -11,7 +11,7 @@ import state
 
 
 def current_crane_count():
-    return max(1, min(CRANE_COUNT, int(state.difficulty)))
+    return max(1, int(state.difficulty))
 
 
 def queue_crate_spawn(grid_x, crate_type):

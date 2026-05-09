@@ -133,10 +133,25 @@ def do_post_landing():
             if state.player.bombs_left < 3:
                 state.player.bombs_left += 1
         
-        # Passive: Cath restores 1 helmet charge when completing colors
+        # Passive: Cath's "Sobrecarga" (Color Clear)
+        # Destroy all other crates of the same color that was matched
         if state.player and state.player.char_id == "cath":
-            if getattr(state.player, "helmet_charges", 0) < state.player.max_helmet_charges:
-                state.player.helmet_charges += 1
+            matched_colors = set()
+            for mx, my in matched:
+                ctype = state.board[my][mx]
+                if ctype > 0 and ctype not in (POWERUP_HELMET_TYPE, BOMB_TYPE):
+                    matched_colors.add(ctype)
+            
+            if matched_colors:
+                from audio import sound_explode
+                play_sound(sound_explode)
+                state.screen_shake = max(state.screen_shake, 12)
+                for by in range(ROWS):
+                    for bx in range(COLS):
+                        if state.board[by][bx] in matched_colors:
+                            if (bx, by) not in to_explode:
+                                to_explode.add((bx, by))
+                                add_particles(bx * TILE_SIZE + TILE_SIZE//2, by * TILE_SIZE + TILE_SIZE//2, (255, 100, 255), 10)
 
     if to_explode:
         state.explosion_anim_cells = list(to_explode)

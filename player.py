@@ -54,8 +54,6 @@ class Personagem:
         self.push_cooldown = 0
         self.bomb_cooldown = 0
         self.helmet_timer = 0
-        self.helmet_charges = 3 if self.char_id == "cath" else 0
-        self.max_helmet_charges = 5
         self.has_double_jumped = False
         self.sprites = char_sprites[char_id]
         self.num_frames = len(self.sprites)
@@ -204,12 +202,8 @@ class Personagem:
                     
                     # Helmet collection from the side
                     if board_ref[by][bx] == POWERUP_HELMET_TYPE:
-                        # Cath doesn't get the timer, only charges
-                        if self.char_id == "cath":
-                            self.helmet_charges = min(self.max_helmet_charges, self.helmet_charges + 1)
-                        else:
-                            duration = 10.0 if self.char_id == "sam" else 5.0
-                            self.helmet_timer += duration
+                        duration = 10.0 if self.char_id == "sam" else 5.0
+                        self.helmet_timer += duration
                         board_ref[by][bx] = 0
                         state.score += 50
                         play_sound(sound_helmet)
@@ -217,6 +211,14 @@ class Personagem:
                         add_particles(self.x + self.PW / 2, self.y + self.PH / 2, (100, 255, 100), 20)
                         pushed = False
                         wants_to_push = False # Convert to normal movement since crate is gone
+                    
+                    # Don't push crates when jumping upward with helmet shield
+                    can_hb = self.helmet_timer > 0
+                    if wants_to_push and can_hb and self.vel_y < 0:
+                        crate_pixel_y = by * TILE_SIZE
+                        head_y = self.y
+                        if crate_pixel_y <= head_y:
+                            wants_to_push = False
                     
                     if wants_to_push:
                         can_push_single = self._pode_empurrar_para(board_ref, bx, by)
@@ -320,6 +322,13 @@ class Personagem:
                         state.screen_shake = 10
                         add_particles(self.x + self.PW / 2, self.y + self.PH / 2, (100, 255, 100), 20)
                         continue
+                    # Skip horizontal ejection for crates when jumping up with
+                    # headbutt ability, ONLY IF the crate is above the player.
+                    # This lets the vertical resolver handle the destruction.
+                    can_headbutt = self.helmet_timer > 0
+                    is_above_head = tile_r.bottom <= r.top + 20
+                    if can_headbutt and self.vel_y < 0 and is_above_head:
+                        continue
                     if self.vel_x > 0:
                         self.x = float(tile_r.left - self.PW)
                     elif self.vel_x < 0:
@@ -394,11 +403,8 @@ class Personagem:
                 if not r.colliderect(tile_r):
                     continue
                 if board_ref[ty][tx] == POWERUP_HELMET_TYPE:
-                    if self.char_id == "cath":
-                        self.helmet_charges = min(self.max_helmet_charges, self.helmet_charges + 1)
-                    else:
-                        duration = 10.0 if self.char_id == "sam" else 5.0
-                        self.helmet_timer += duration
+                    duration = 10.0 if self.char_id == "sam" else 5.0
+                    self.helmet_timer += duration
                     board_ref[ty][tx] = 0
                     state.score += 50
                     play_sound(sound_helmet)
@@ -408,17 +414,24 @@ class Personagem:
                     self.vel_y = 0
                     self.no_chao = True
                 elif self.vel_y < 0:
-                    # Headbutt Logic (Helmet timer OR Cath's Passive Charges)
-                    can_headbutt = self.helmet_timer > 0 or (self.char_id == "cath" and self.helmet_charges > 0)
-                    if can_headbutt:
+                    # Headbutt Logic (Helmet timer)
+                    can_headbutt = self.helmet_timer > 0
+                    
+                    # Only headbutt if the crate is actually above the player (hitting the bottom of it)
+                    # tile_r.bottom must be near self.y (player's top)
+                    is_hitting_bottom = tile_r.bottom <= self.y + 20
+                    
+                    if can_headbutt and is_hitting_bottom:
                         # Destroy crate from below
                         board_ref[ty][tx] = 0
                         play_sound(sound_explode)
                         add_particles(tile_r.centerx, tile_r.centery, (200, 200, 200), 12)
                         
-                        # Consume charge if not using a timed powerup
-                        if self.char_id == "cath" and self.helmet_timer <= 0:
-                            self.helmet_charges -= 1
+                        # Apply gravity so crates above fall, then check for combos
+                        from board import apply_board_gravity, do_post_landing
+                        state.combo_count = 0
+                        apply_board_gravity()
+                        do_post_landing()
                         
                         # Maintain upward momentum (original arcade feel)
                         self.vel_y *= 0.5 
@@ -536,12 +549,9 @@ class Personagem:
                 continue
 
             if box["type"] == POWERUP_HELMET_TYPE:
-                if self.char_id == "cath":
-                    self.helmet_charges = min(self.max_helmet_charges, self.helmet_charges + 1)
-                else:
-                    # Sam's Passive: Helmet lasts twice as long
-                    duration = 10.0 if self.char_id == "sam" else 5.0
-                    self.helmet_timer += duration
+                # Sam's Passive: Helmet lasts twice as long
+                duration = 10.0 if self.char_id == "sam" else 5.0
+                self.helmet_timer += duration
                 state.score += 50
                 play_sound(sound_powerup)
                 state.screen_shake = 10
@@ -562,18 +572,7 @@ class Personagem:
                 self.vel_y = min(self.vel_y, -4)
                 continue
 
-            # Cath's Headbutt for falling boxes
-            if self.char_id == "cath" and self.helmet_charges > 0 and self.vel_y < 0:
-                # Collision check for head hitting the falling box
-                head_r = pygame.Rect(self.x + 4, self.y, self.PW - 8, 10)
-                box_r = pygame.Rect(box_px, box_py, TILE_SIZE, TILE_SIZE)
-                if head_r.colliderect(box_r):
-                    falling_boxes_list.remove(box)
-                    self.helmet_charges -= 1
-                    play_sound(sound_explode)
-                    add_particles(box_px + TILE_SIZE / 2, box_py + TILE_SIZE / 2, (220, 220, 220), 12)
-                    self.vel_y = 2 # Bounce down slightly to avoid instant second collision
-                    continue
+
 
             if self.helmet_timer > 0:
                 # Original mechanic: Don't explode, just stun and the box lands
@@ -587,12 +586,18 @@ class Personagem:
                 gx, gy = box["x"], int(box["py"] // TILE_SIZE)
                 gy = max(0, min(ROWS - 1, gy))
                 
-                if state.board[gy][gx] == 0:
-                    state.board[gy][gx] = box["type"]
-                
-                from board import apply_board_gravity, do_post_landing
-                apply_board_gravity()
-                do_post_landing()
+                if box["type"] == BOMB_TYPE:
+                    from board import handle_bomb
+                    handle_bomb(gx, gy)
+                else:
+                    if state.board[gy][gx] == 0:
+                        state.board[gy][gx] = box["type"]
+                        if box["type"] == POWERUP_HELMET_TYPE:
+                            state.helmet_timers[gy][gx] = 180
+                    
+                    from board import apply_board_gravity, do_post_landing
+                    apply_board_gravity()
+                    do_post_landing()
                 continue
 
             # Death
