@@ -6,7 +6,7 @@ and the generic ``approach`` easing function.
 """
 import random
 import pygame
-from constants import TILE_SIZE, PUSH_HORIZONTAL_SPEED, PUSH_SLIDE_SPEED, POWERUP_HELMET_TYPE, BOMB_TYPE
+from constants import TILE_SIZE, PUSH_HORIZONTAL_SPEED, PUSH_SLIDE_SPEED, POWERUP_HELMET_TYPE, BOMB_TYPE, SAM_BOMB_TYPE
 import state
 
 
@@ -127,7 +127,7 @@ def update_box_visuals():
             state.board[ty][tx] = anim["type"]
             if anim["type"] == POWERUP_HELMET_TYPE:
                 state.helmet_timers[ty][tx] = anim.get("helmet_timer", 180)
-            if anim["type"] == BOMB_TYPE:
+            if anim["type"] == BOMB_TYPE or anim["type"] == SAM_BOMB_TYPE:
                 state.bomb_timers[ty][tx] = anim.get("bomb_timer", 180)
 
         state.combo_count = 0

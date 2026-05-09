@@ -8,7 +8,7 @@ import random
 import math
 from constants import (
     WIDTH, HEIGHT, HUD_H, TILE_SIZE, ROWS, COLS,
-    CRANE_Y, POWERUP_HELMET_TYPE, BOMB_TYPE,
+    CRANE_Y, POWERUP_HELMET_TYPE, BOMB_TYPE, SAM_BOMB_TYPE,
     CRANE_FRAME_FOR_CRATE, CRANE_EMPTY_FRAME,
     CHAR_DEFS,
 )
@@ -89,16 +89,16 @@ def draw_hud_to(target_surf):
     target_surf.blit(trophy_icon, (10, trophy_y))
     
     txt_pts = font_med.render(str(state.score), True, (255, 210, 50))
-    target_surf.blit(txt_pts, (36, mid_y - txt_pts.get_height()//2))
+    target_surf.blit(txt_pts, (42, mid_y - txt_pts.get_height()//2))
     
     # Helmet Timer (Left-mid)
     if state.player and state.player.helmet_timer > 0:
         h_secs = math.ceil(state.player.helmet_timer)
         helmet_icon = crate_sprite_for_type(POWERUP_HELMET_TYPE)
         icon_small = pygame.transform.scale(helmet_icon, (22, 22))
-        target_surf.blit(icon_small, (90, mid_y - 11))
+        target_surf.blit(icon_small, (105, mid_y - 11))
         h_txt = font_sm.render(f"{h_secs}S", True, (100, 255, 100))
-        target_surf.blit(h_txt, (116, mid_y - h_txt.get_height()//2 + 1))
+        target_surf.blit(h_txt, (131, mid_y - h_txt.get_height()//2 + 1))
         
     # Center: Passive Ability Badge
     if state.player:
@@ -136,7 +136,7 @@ def draw_hud_to(target_surf):
         
     # Right-mid: Power Quantity
     if state.player and getattr(state.player, "max_bombs", 0) > 0:
-        bomb_icon = crate_sprite_for_type(BOMB_TYPE)
+        bomb_icon = crate_sprite_for_type(SAM_BOMB_TYPE) if state.player.char_id == "sam" else crate_sprite_for_type(BOMB_TYPE)
         icon_small = pygame.transform.scale(bomb_icon, (22, 22))
         target_surf.blit(icon_small, (WIDTH - 110, mid_y - 11))
         b_color = (255, 120, 120) if state.player.bombs_left > 0 else (120, 80, 80)
@@ -196,7 +196,7 @@ def draw_game(flip=True):
                 
                 temp_surface.blit(crate_sprite_for_type(state.board[y][x]), (x * TILE_SIZE, y * TILE_SIZE))
                 
-                if state.board[y][x] == BOMB_TYPE:
+                if state.board[y][x] in (BOMB_TYPE, SAM_BOMB_TYPE):
                     spark_x = x * TILE_SIZE + 20
                     spark_y = y * TILE_SIZE - 5
                     if (pygame.time.get_ticks() // 80) % 2 == 0:
@@ -220,7 +220,7 @@ def draw_game(flip=True):
         bpx = box.get("px", box["x"] * TILE_SIZE)
         bpy = box.get("py", box["y"] * TILE_SIZE)
         temp_surface.blit(crate_sprite_for_type(box["type"]), (int(bpx), int(bpy)))
-        if box["type"] == BOMB_TYPE:
+        if box["type"] in (BOMB_TYPE, SAM_BOMB_TYPE):
             spark_x = int(bpx) + 20
             spark_y = int(bpy) - 5
             if (pygame.time.get_ticks() // 80) % 2 == 0:
@@ -282,7 +282,7 @@ def draw_game(flip=True):
         t_hs = font_sm.render(hs_msg, True, (100, 255, 100) if is_new else (255, 210, 50))
         temp_surface.blit(t_hs, (WIDTH // 2 - t_hs.get_width() // 2, panel_y + 200))
         
-        instr = font_sm.render("R REINICIAR   Q SAIR", True, (200, 210, 230))
+        instr = font_sm.render("START REINICIAR   SELECT MENU", True, (200, 210, 230))
         temp_surface.blit(instr, (WIDTH // 2 - instr.get_width() // 2, panel_y + 232))
 
     _screen.fill((0, 0, 0))
@@ -412,8 +412,8 @@ def draw_mobile_controls():
     pygame.draw.rect(_screen, st_color, (st_x - st_w//2, st_y - st_h//2, st_w, st_h), border_radius=7)
     pygame.draw.rect(_screen, st_color, (se_x - st_w//2, se_y - st_h//2, st_w, st_h), border_radius=7)
     
-    # Labels for Start/Select
-    lbl_sel = font_xs.render("SAIR", True, (140, 145, 140))
+    # Labels for Start/Select (Fixed labels like a real Gameboy)
+    lbl_sel = font_xs.render("SELECT", True, (140, 145, 140))
     lbl_st = font_xs.render("START", True, (140, 145, 140))
     _screen.blit(lbl_sel, (se_x - lbl_sel.get_width()//2, se_y - 20))
     _screen.blit(lbl_st, (st_x - lbl_st.get_width()//2, st_y - 20))

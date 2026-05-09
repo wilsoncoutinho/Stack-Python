@@ -10,7 +10,7 @@ from constants import (
     PUSH_RIGHT_FRAMES, PUSH_LEFT_FRAMES,
     JUMP_RIGHT_FRAME, JUMP_LEFT_FRAME, STUN_FRAME, STUN_FRAMES,
     JUMP_BUFFER_FRAMES, COYOTE_FRAMES, PUSH_HORIZONTAL_SPEED,
-    CHAR_DEFS, BOMB_TYPE, POWERUP_HELMET_TYPE,
+    CHAR_DEFS, BOMB_TYPE, SAM_BOMB_TYPE, POWERUP_HELMET_TYPE,
 )
 from assets_loader import char_sprites
 from audio import (
@@ -586,9 +586,9 @@ class Personagem:
                 gx, gy = box["x"], int(box["py"] // TILE_SIZE)
                 gy = max(0, min(ROWS - 1, gy))
                 
-                if box["type"] == BOMB_TYPE:
+                if box["type"] == BOMB_TYPE or box["type"] == SAM_BOMB_TYPE:
                     from board import handle_bomb
-                    handle_bomb(gx, gy)
+                    handle_bomb(gx, gy, is_sam_bomb=(box["type"] == SAM_BOMB_TYPE))
                 else:
                     if state.board[gy][gx] == 0:
                         state.board[gy][gx] = box["type"]
@@ -623,10 +623,10 @@ class Personagem:
             ty = max(0, min(ROWS - 1, ty))
             if tx == self.grid_x:
                 return False
-            if board_ref[ty][tx] == BOMB_TYPE:
+            if board_ref[ty][tx] in (BOMB_TYPE, SAM_BOMB_TYPE):
                 return False
             else:
-                board_ref[ty][tx] = BOMB_TYPE
+                board_ref[ty][tx] = SAM_BOMB_TYPE
                 state.bomb_timers[ty][tx] = 180
             self.bombs_left -= 1
             self.bomb_cooldown = 40

@@ -7,7 +7,7 @@ bomb handling, and post-landing combo logic.
 import math
 import pygame
 from constants import (
-    COLS, ROWS, TILE_SIZE, BOMB_TYPE, POWERUP_HELMET_TYPE,
+    COLS, ROWS, TILE_SIZE, BOMB_TYPE, SAM_BOMB_TYPE, POWERUP_HELMET_TYPE,
     INITIAL_SPAWN_MS, SPAWN_EVENT,
 )
 from audio import (
@@ -139,7 +139,7 @@ def do_post_landing():
             matched_colors = set()
             for mx, my in matched:
                 ctype = state.board[my][mx]
-                if ctype > 0 and ctype not in (POWERUP_HELMET_TYPE, BOMB_TYPE):
+                if ctype > 0 and ctype not in (POWERUP_HELMET_TYPE, BOMB_TYPE, SAM_BOMB_TYPE):
                     matched_colors.add(ctype)
             
             if matched_colors:
@@ -165,7 +165,7 @@ def do_post_landing():
 # ---------------------------------------------------------------------------
 # Bomb explosion
 # ---------------------------------------------------------------------------
-def handle_bomb(bx, by):
+def handle_bomb(bx, by, is_sam_bomb=False):
     state.screen_shake = 20
     state.explosion_anim_cells = []
     play_sound(sound_explode)
@@ -183,8 +183,8 @@ def handle_bomb(bx, by):
     state.explosion_anim_timer = 20
 
     p = state.player
-    if p and p.alive and p.helmet_timer > 0:
-        pass  # helmet protects
+    if p and p.alive and (p.helmet_timer > 0 or (p.char_id == "sam" and is_sam_bomb)):
+        pass  # helmet or Sam's passive protects against his own bombs
     elif p and p.alive:
         pgx, pgy = p.grid_x, p.grid_y
         p_row_top = p.grid_y
@@ -236,8 +236,8 @@ def handle_gravity():
             pgx, pgy = p.grid_x, p.grid_y
             if pgx == bx_pos and pgy == by_pos:
                 p.ativar_stun(15)
-            if btype == BOMB_TYPE:
-                handle_bomb(bx_pos, by_pos)
+            if btype == BOMB_TYPE or btype == SAM_BOMB_TYPE:
+                handle_bomb(bx_pos, by_pos, is_sam_bomb=(btype == SAM_BOMB_TYPE))
             else:
                 state.combo_count = 0
                 do_post_landing()

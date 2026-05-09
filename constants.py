@@ -35,6 +35,7 @@ MAGENTA = (255, 0, 255)
 # ---------------------------------------------------------------------------
 NUM_CRATE_TYPES = 5
 BOMB_TYPE = 8
+SAM_BOMB_TYPE = 9
 POWERUP_HELMET_TYPE = 6
 
 # ---------------------------------------------------------------------------
@@ -116,4 +117,4 @@ GAMEPLAY_MUSIC_FILES = [
     "gameplay_4.mid",  # 165 BPM - Intense
     "gameplay_5.mid",  # 195 BPM - Maximum chaos
 ]
-MUSIC_THRESHOLDS = [1.0, 4.0, 7.0, 10.0, 13.0]
+MUSIC_THRESHOLDS = [1.0, 5.0, 10.0, 15.0, 20.0]

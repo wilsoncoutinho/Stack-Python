@@ -8,7 +8,7 @@ import os
 import pygame
 from constants import (
     ASSETS, MAGENTA, TILE_SIZE, WIDTH, HEIGHT, HUD_H,
-    CRANE_FW, CHAR_DEFS, NUM_CRATE_TYPES, BOMB_TYPE, POWERUP_HELMET_TYPE,
+    CRANE_FW, CHAR_DEFS, NUM_CRATE_TYPES, BOMB_TYPE, SAM_BOMB_TYPE, POWERUP_HELMET_TYPE,
     CRANE_FRAME_FOR_CRATE,
 )
 
@@ -235,6 +235,20 @@ except Exception:
     pygame.draw.rect(bomb_sprite, (0, 0, 0), (0, 0, TILE_SIZE, TILE_SIZE), 3)
     pygame.draw.rect(bomb_sprite, (220, 40, 40), (10, 10, 20, 20))
 
+sam_bomb_sprite = bomb_sprite.copy()
+try:
+    with pygame.PixelArray(sam_bomb_sprite) as px:
+        # We want to swap red-ish colors to blue-ish
+        # Since we don't have numpy, we can do a simple replacement of colors or use surface.fill with flags
+        # However, PixelArray allows direct access. For a 32x32 image, a loop is fine.
+        for x in range(sam_bomb_sprite.get_width()):
+            for y in range(sam_bomb_sprite.get_height()):
+                r, g, b, a = sam_bomb_sprite.unmap_rgb(px[x, y])
+                if r > 150 and g < 100 and b < 100: # It's a red pixel
+                    px[x, y] = (b, g, r, a) # Swap R and B
+except Exception:
+    pass
+
 crane_sprites = slice_sheet(load_img("extracted/crane.png"), CRANE_FW, 18, TILE_SIZE / 8)
 CRANE_SPRITE_W = crane_sprites[0].get_width() if crane_sprites else TILE_SIZE * 2
 CRANE_SPRITE_H = crane_sprites[0].get_height() if crane_sprites else TILE_SIZE * 2
@@ -253,6 +267,8 @@ for cdef in CHAR_DEFS:
 # Sprite lookup helper
 # ---------------------------------------------------------------------------
 def crate_sprite_for_type(crate_type):
+    if crate_type == SAM_BOMB_TYPE:
+        return sam_bomb_sprite
     if crate_type == BOMB_TYPE:
         return bomb_sprite
     if crate_type == POWERUP_HELMET_TYPE:

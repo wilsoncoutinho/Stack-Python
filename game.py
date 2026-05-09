@@ -8,7 +8,7 @@ import sys
 import random
 from constants import (
     COLS, ROWS, INITIAL_SPAWN_MS, GRAVITY_MS, GRAVITY_EVENT, SPAWN_EVENT,
-    CHAR_DEFS, NUM_CRATE_TYPES, BOMB_TYPE, POWERUP_HELMET_TYPE,
+    CHAR_DEFS, NUM_CRATE_TYPES, BOMB_TYPE, SAM_BOMB_TYPE, POWERUP_HELMET_TYPE,
 )
 import state
 from player import Personagem
@@ -160,7 +160,8 @@ def run_game():
                 if event.type == pygame.QUIT: pygame.quit(); sys.exit()
                 if not state.player.alive:
                     if event.type == pygame.KEYDOWN:
-                        if event.key == pygame.K_r: reset_game(state.selected_level)
+                        if event.key in (pygame.K_r, pygame.K_RETURN, pygame.K_SPACE):
+                            reset_game(state.selected_level)
                         elif event.key == pygame.K_q: 
                             state.game_state = "title"
                             play_music("title.mid", loops=-1)
@@ -174,7 +175,7 @@ def run_game():
                     queue_crate_spawn(x, ctype)
                 if event.type == GRAVITY_EVENT: handle_gravity()
                 if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_ESCAPE:
+                    if event.key in (pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_q):
                         stop_timers(); pause_music()
                         state.game_state = "pause"
                     elif event.key in (pygame.K_UP, pygame.K_w, pygame.K_SPACE): state.player.pular()
@@ -202,10 +203,10 @@ def run_game():
                         if state.helmet_timers[y][x] > 0:
                             state.helmet_timers[y][x] -= 1
                             if state.helmet_timers[y][x] <= 0: state.board[y][x] = 0; needs_gravity = True
-                    elif state.board[y][x] == BOMB_TYPE:
+                    elif state.board[y][x] == BOMB_TYPE or state.board[y][x] == SAM_BOMB_TYPE:
                         if state.bomb_timers[y][x] > 0:
                             state.bomb_timers[y][x] -= 1
-                            if state.bomb_timers[y][x] <= 0: handle_bomb(x, y)
+                            if state.bomb_timers[y][x] <= 0: handle_bomb(x, y, is_sam_bomb=(state.board[y][x] == SAM_BOMB_TYPE))
             if needs_gravity: apply_board_gravity(); do_post_landing()
             update_box_visuals(); draw_game()
             clock.tick(60)
