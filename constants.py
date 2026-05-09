@@ -22,7 +22,7 @@ COLS = 12
 ROWS = 12
 WIDTH = COLS * TILE_SIZE
 HEIGHT = ROWS * TILE_SIZE
-HUD_H = 48
+HUD_H = 60
 CONTROLS_H = 200
 
 # ---------------------------------------------------------------------------
@@ -98,11 +98,12 @@ CHAR_DEFS = [
      "speed": 4.0, "jump": -9.5, "super_jumps": 0, "bombs": 0, "ability": "high_jump",
      "desc": "Pulo Alto. Alcanca a altura de 2 caixas empilhadas."},
     {"id": "cath", "name": "Crate-Crazy Cath", "sprite": "woman2.png", "icon": "icwoman2.png",
-     "speed": 4.0, "jump": -7.5, "super_jumps": 0, "bombs": 0, "ability": "Cabeçada",
+     "speed": 4.0, "jump": -7.5, "super_jumps": 0, "bombs": 0, "ability": "stomp",
      "desc": "Cabeçada. Destroi caixas por baixo (3 usos). Recarrega com combos ou itens."},
     {"id": "sam", "name": "Super-Stacker Sam", "sprite": "man4.png", "icon": "iconman4.png",
-     "speed": 3.0, "jump": -7.0, "super_jumps": 0, "bombs": 3, "ability": "bombs",
-     "desc": "Demolidor. Tem bombas com raio 2 e recupera 1 ao combinar 3 cores."}
+     "speed": 4.5, "jump": -7.5, "super_jumps": 0, "bombs": 3, "ability": "bombs",
+     "desc": "Demolidor. Tem bombas com raio 1 e recupera 1 ao combinar 3 cores.",
+     "radius": 1}
 ]
 
 # ---------------------------------------------------------------------------

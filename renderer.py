@@ -29,6 +29,49 @@ def set_screen(surface):
     global _screen
     _screen = surface
 
+# Pre-calculate CRT scanlines to save performance
+_scanline_surf = None
+def _get_scanline_surf(w, h):
+    global _scanline_surf
+    if _scanline_surf is None or _scanline_surf.get_size() != (w, h):
+        _scanline_surf = pygame.Surface((w, h), pygame.SRCALPHA)
+        for y in range(0, h, 2):
+            pygame.draw.line(_scanline_surf, (0, 0, 0, 45), (0, y), (w, y))
+    return _scanline_surf
+
+def draw_crt_effect(target_surf):
+    """Applies scanlines and a vignette effect to the target surface."""
+    w, h = target_surf.get_size()
+    
+    # 1. Scanlines
+    target_surf.blit(_get_scanline_surf(w, h), (0, 0))
+    
+    # 2. Vignette (Radial gradient)
+    vignette = pygame.Surface((w, h), pygame.SRCALPHA)
+    # Draw a large circle that fades to black at edges
+    # To keep it efficient, we can use a small surface and scale it up or pre-calculate
+    # Here we'll use a simpler approach: dark rectangles at edges
+    edge_w = 40
+    for i in range(edge_w):
+        alpha = int(60 * (1 - i / edge_w))
+        # Top
+        pygame.draw.line(vignette, (0, 0, 0, alpha), (0, i), (w, i))
+        # Bottom
+        pygame.draw.line(vignette, (0, 0, 0, alpha), (0, h - 1 - i), (w, h - 1 - i))
+        # Left
+        pygame.draw.line(vignette, (0, 0, 0, alpha), (i, 0), (i, h))
+        # Right
+        pygame.draw.line(vignette, (0, 0, 0, alpha), (w - 1 - i, 0), (w - 1 - i, h))
+    
+    target_surf.blit(vignette, (0, 0))
+    
+    # 3. Subtle noise/grain (Optional, but adds to the retro feel)
+    if random.random() < 0.1: # Only some frames to save CPU
+        for _ in range(200):
+            nx = random.randint(0, w-1)
+            ny = random.randint(0, h-1)
+            target_surf.set_at((nx, ny), (255, 255, 255, 10))
+
 def draw_hud_to(target_surf):
     # Background panel
     pygame.draw.rect(target_surf, (18, 22, 32), (0, HEIGHT, WIDTH, HUD_H))
@@ -36,6 +79,12 @@ def draw_hud_to(target_surf):
     
     # Left side: Score
     icon_y = HEIGHT + (HUD_H - trophy_icon.get_height()) // 2
+    
+    # Add glow to trophy
+    glow_surf = pygame.Surface((30, 30), pygame.SRCALPHA)
+    pygame.draw.circle(glow_surf, (255, 210, 50, 40), (15, 15), 14)
+    target_surf.blit(glow_surf, (7, icon_y - 3), special_flags=pygame.BLEND_ADD)
+    
     target_surf.blit(trophy_icon, (10, icon_y))
     
     txt_pts = font_med.render(str(state.score), True, (255, 210, 50))
@@ -52,7 +101,7 @@ def draw_hud_to(target_surf):
             "speed": ("VELOZ", (100, 220, 255)),
             "double_push": ("MAIS FORTE", (255, 180, 80)),
             "high_jump": ("PULO ALTO", (120, 255, 120)),
-            "stomp": ("CABEÇADA", (255, 100, 100)),
+            "stomp": ("CABECADA", (255, 100, 100)),
             "bombs": ("DEMOLIDOR", (255, 50, 50))
         }
         ab_name, ab_color = ability_labels.get(ability, ("???", (255, 255, 255)))
@@ -62,44 +111,53 @@ def draw_hud_to(target_surf):
         
         # Dynamic width badge
         bw = max(80, ab_surf.get_width() + 20)
-        bg_rect = pygame.Rect(cx - bw//2, HEIGHT + (HUD_H - 24)//2, bw, 24)
+        bg_rect = pygame.Rect(cx - bw//2, HEIGHT + (HUD_H - 28)//2, bw, 28)
         
         # Draw the Badge (dark fill + bright border)
         pygame.draw.rect(target_surf, (ab_color[0]//5, ab_color[1]//5, ab_color[2]//5), bg_rect, border_radius=6)
         pygame.draw.rect(target_surf, ab_color, bg_rect, 1, border_radius=6)
+        
+        # Glow
+        badge_glow = pygame.Surface((bw + 10, 38), pygame.SRCALPHA)
+        pygame.draw.rect(badge_glow, (*ab_color, 30), badge_glow.get_rect(), border_radius=8, width=2)
+        target_surf.blit(badge_glow, (bg_rect.x - 5, bg_rect.y - 5), special_flags=pygame.BLEND_ADD)
+        
         target_surf.blit(ab_surf, (cx - ab_surf.get_width()//2, HEIGHT + (HUD_H - ab_surf.get_height()) // 2))
         
-    # Right side: Level and Bombs
+    # Right side: Level (top row) and item icons (bottom row)
     lvl_txt = font_sm.render(f"NIVEL {int(state.difficulty)}", True, (180, 190, 210))
-    target_surf.blit(lvl_txt, (WIDTH - lvl_txt.get_width() - 10, HEIGHT + (HUD_H - lvl_txt.get_height()) // 2))
+    target_surf.blit(lvl_txt, (WIDTH - lvl_txt.get_width() - 10, HEIGHT + 6))
+    
+    # Item icons positioned below level text
+    item_y = HEIGHT + 30
     
     if state.player and getattr(state.player, "max_bombs", 0) > 0:
         # Sam's Bombs Icon
         bomb_icon = crate_sprite_for_type(BOMB_TYPE)
-        icon_small = pygame.transform.scale(bomb_icon, (26, 26))
-        target_surf.blit(icon_small, (WIDTH - 100, HEIGHT + 28))
+        icon_small = pygame.transform.scale(bomb_icon, (22, 22))
+        target_surf.blit(icon_small, (WIDTH - 70, item_y))
         b_color = (255, 120, 120) if state.player.bombs_left > 0 else (120, 80, 80)
         b_txt = font_sm.render(f"X{state.player.bombs_left}", True, b_color)
-        target_surf.blit(b_txt, (WIDTH - 70, HEIGHT + 30))
+        target_surf.blit(b_txt, (WIDTH - 45, item_y + 2))
         
     if state.player and getattr(state.player, "helmet_charges", 0) > 0:
         # Cath's Helmet Icon
         helmet_icon = crate_sprite_for_type(POWERUP_HELMET_TYPE)
-        icon_small = pygame.transform.scale(helmet_icon, (26, 26))
-        target_surf.blit(icon_small, (WIDTH - 100, HEIGHT + 28))
+        icon_small = pygame.transform.scale(helmet_icon, (22, 22))
+        target_surf.blit(icon_small, (WIDTH - 70, item_y))
         c_color = (120, 255, 120)
         c_txt = font_sm.render(f"X{state.player.helmet_charges}", True, c_color)
-        target_surf.blit(c_txt, (WIDTH - 70, HEIGHT + 30))
+        target_surf.blit(c_txt, (WIDTH - 45, item_y + 2))
         
     # Overlays
     if state.player and state.player.helmet_timer > 0:
         h_secs = math.ceil(state.player.helmet_timer)
         h_txt = font_sm.render(f"CAPACETE {h_secs}", True, (100, 255, 100))
-        target_surf.blit(h_txt, (10, HEIGHT + 32))
+        target_surf.blit(h_txt, (10, HEIGHT + 42))
         
     if state.combo_count > 1:
         combo_txt = font_sm.render(f"COMBO X{state.combo_count}!", True, (255, 150, 50))
-        target_surf.blit(combo_txt, (WIDTH // 2 - combo_txt.get_width() // 2, HEIGHT + 32))
+        target_surf.blit(combo_txt, (WIDTH // 2 - combo_txt.get_width() // 2, HEIGHT + 42))
 
 def draw_game(flip=True):
     if not _screen: return
@@ -223,6 +281,10 @@ def draw_game(flip=True):
         temp_surface.blit(instr, (WIDTH // 2 - instr.get_width() // 2, panel_y + 232))
 
     _screen.fill((0, 0, 0))
+    
+    # Apply CRT effect to the game+HUD surface before final blit
+    draw_crt_effect(temp_surface)
+    
     _screen.blit(temp_surface, (offset_x, offset_y))
     if flip: draw_mobile_controls()
     pygame.display.flip()
@@ -358,7 +420,10 @@ def draw_title():
     t = font_med.render("Pressione ENTER para jogar", True, (pulse, pulse, 255))
     _screen.blit(t, (WIDTH // 2 - t.get_width() // 2, HEIGHT + HUD_H - 36))
     draw_mobile_controls()
-
+    
+    # Apply CRT overlay to title
+    draw_crt_effect(_screen)
+    
     pygame.display.flip()
 
 def draw_char_select():
@@ -457,7 +522,7 @@ def draw_char_select():
             "speed": ("VELOZ", (100, 220, 255)),
             "double_push": ("MAIS FORTE", (255, 180, 80)),
             "high_jump": ("PULO ALTO", (120, 255, 120)),
-            "stomp": ("CABEÇADA", (255, 100, 100)),
+            "stomp": ("CABECADA", (255, 100, 100)),
             "bombs": ("DEMOLIDOR", (255, 50, 50))
         }
         
@@ -488,7 +553,9 @@ def draw_char_select():
         ix += t_r.get_width()
 
     draw_mobile_controls()
-
+    
+    # Apply CRT overlay
+    draw_crt_effect(_screen)
 
     pygame.display.flip()
 
@@ -593,6 +660,8 @@ def draw_level_select():
         draw_kx += l_surf.get_width()
 
     draw_mobile_controls()
-
+    
+    # Apply CRT overlay
+    draw_crt_effect(_screen)
 
     pygame.display.flip()

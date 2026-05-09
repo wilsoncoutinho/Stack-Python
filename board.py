@@ -155,8 +155,8 @@ def handle_bomb(bx, by):
     state.explosion_anim_cells = []
     play_sound(sound_explode)
     
-    # Passive: Sam has a larger bomb radius
-    radius = 2 if (state.player and state.player.char_id == "sam") else 1
+    # Sam has a 3x3 bomb radius (radius=1)
+    radius = 1
     
     for dx in range(-radius, radius + 1):
         for dy in range(-radius, radius + 1):
